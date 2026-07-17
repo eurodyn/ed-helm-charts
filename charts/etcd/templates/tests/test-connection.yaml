@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "helm.fullname" . }}-test-connection
+  labels:
+    {{- include "helm.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  restartPolicy: Never
+  containers:
+    - name: etcdctl
+      image: {{ include "helm.image" . }}
+      command:
+        - etcdctl
+      args:
+        - --endpoints=http://{{ include "helm.fullname" . }}-0.{{ include "helm.headlessServiceName" . }}:{{ include "helm.clientPort" . }}
+        - endpoint
+        - health
+        - --cluster

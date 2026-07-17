@@ -1,0 +1,92 @@
+{{- if and .Values.tls.enabled .Values.tls.certManager.enabled }}
+{{- if not .Values.tls.certManager.issuerRef.name }}
+##
+## No external issuerRef was supplied, so bootstrap a self-signed CA: a self-signed
+## Issuer signs a CA Certificate, and a second Issuer then signs the client/peer
+## certificates below using that CA.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "helm.fullname" . }}-selfsigned-issuer
+  labels:
+    {{- include "helm.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "helm.fullname" . }}-ca
+  labels:
+    {{- include "helm.labels" . | nindent 4 }}
+spec:
+  isCA: true
+  commonName: {{ include "helm.fullname" . }}-ca
+  secretName: {{ include "helm.fullname" . }}-ca
+  duration: 8760h # 1y
+  renewBefore: 720h # 30d
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  issuerRef:
+    name: {{ include "helm.fullname" . }}-selfsigned-issuer
+    kind: Issuer
+    group: cert-manager.io
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "helm.fullname" . }}-ca-issuer
+  labels:
+    {{- include "helm.labels" . | nindent 4 }}
+spec:
+  ca:
+    secretName: {{ include "helm.fullname" . }}-ca
+---
+{{- end }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "helm.fullname" . }}-client-tls
+  labels:
+    {{- include "helm.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "helm.clientTlsSecretName" . }}
+  duration: {{ .Values.tls.certManager.duration | quote }}
+  renewBefore: {{ .Values.tls.certManager.renewBefore | quote }}
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  usages:
+    - client auth
+    - server auth
+  dnsNames:
+    {{- include "helm.tlsDnsNames" . | nindent 4 }}
+  ipAddresses:
+    - 127.0.0.1
+  issuerRef:
+    {{- include "helm.certManagerIssuerRef" . | nindent 4 }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "helm.fullname" . }}-peer-tls
+  labels:
+    {{- include "helm.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "helm.peerTlsSecretName" . }}
+  duration: {{ .Values.tls.certManager.duration | quote }}
+  renewBefore: {{ .Values.tls.certManager.renewBefore | quote }}
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  usages:
+    - client auth
+    - server auth
+  dnsNames:
+    {{- include "helm.tlsDnsNames" . | nindent 4 }}
+  ipAddresses:
+    - 127.0.0.1
+  issuerRef:
+    {{- include "helm.certManagerIssuerRef" . | nindent 4 }}
+{{- end }}

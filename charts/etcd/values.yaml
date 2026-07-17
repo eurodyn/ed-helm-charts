@@ -1,0 +1,149 @@
+# This is a Helm chart for deploying ETCD on Kubernetes.
+
+# Use this to override the name of the chart
+nameOverride: ""
+# Use this to override the release name
+fullnameOverride: ""
+
+# The replica count for the etcd StatefulSet
+replicaCount: 3
+
+## Cluster domain suffix, used to build DNS SANs for TLS certificates.
+clusterDomain: cluster.local
+
+image:
+  # Image registry to pull the image from
+  registry: quay.io
+  # Image repository name
+  repository: coreos/etcd
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+  # Image Policy to use when pulling the image. One of Always, Never, IfNotPresent.
+  pullPolicy: IfNotPresent
+
+# If you need to add image pull secrets, you can specify them here.
+imagePullSecrets: []
+## Example:
+## imagePullSecrets:
+##   - name: secretName
+
+##
+## This must be set to "new" for initial cluster bootstrapping. To scale
+## the cluster up, this should be changed to "existing" when the replica
+## count is increased. If set incorrectly, etcd makes an attempt to
+## start but fail safely.
+initialClusterState: new
+
+## Storage size for the etcd data volume. This is a PersistentVolumeClaim that will be created for each replica.
+persistence:
+  size: 10Gi
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  fsGroup: 1001
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+
+resources:
+  limits:
+    cpu: 1
+    memory: 1Gi
+  requests:
+    cpu: 200m
+    memory: 256Mi
+
+# Readiness probe configuration for the etcd container
+readinessProbe:
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 30
+
+# Liveness probe configuration for the etcd container
+livenessProbe:
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# Additional volumes on the output StatefulSet definition.
+volumes: []
+# - name: foo
+#   secret:
+#     secretName: mysecret
+#     optional: false
+
+# Additional volumeMounts on the output StatefulSet definition.
+volumeMounts: []
+# - name: foo
+#   mountPath: "/etc/foo"
+#   readOnly: true
+
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - '{{ include "helm.fullname" . }}'
+          topologyKey: kubernetes.io/hostname
+
+# Pod Disruption Budget, so voluntary disruptions (node drains, upgrades) can't take
+# down enough etcd members at once to break quorum.
+pdb:
+  create: true
+  # Maximum number of pods that can be unavailable at once. Defaults to 1, which is
+  # quorum-safe for the default replicaCount of 3. Mutually exclusive with minAvailable
+  # (if minAvailable is set, it takes precedence).
+  maxUnavailable: 1
+  # Minimum number of pods that must remain available. Leave empty to use maxUnavailable.
+  minAvailable: ""
+
+## mTLS for etcd client and peer communication (see https://etcd.io/docs/v3.7/op-guide/kubernetes/).
+## When enabled, both the client-facing/etcdctl endpoint and the peer endpoint require
+## a valid client certificate signed by the configured CA.
+tls:
+  enabled: false
+
+  ## Certificates can be issued automatically via cert-manager, or supplied as
+  ## pre-existing Secrets (see client.existingSecret / peer.existingSecret below).
+  ## Requires the cert-manager CRDs/controller to already be installed in the cluster.
+  certManager:
+    enabled: false
+
+    ## Reference an existing cert-manager Issuer/ClusterIssuer to sign the client and
+    ## peer certificates. Leave `name` empty to have the chart create its own
+    ## bootstrap self-signed CA (Issuer + CA Certificate + CA Issuer).
+    issuerRef:
+      name: ""
+      kind: ClusterIssuer
+      group: cert-manager.io
+
+    # Certificate lifetime and renewal window, passed straight to the Certificate resources.
+    duration: 2160h # 90d
+    renewBefore: 360h # 15d
+
+  ## Client-facing certificate. Used for --cert-file/--key-file (the client listener)
+  ## and reused by etcdctl inside the container.
+  client:
+    ## Name of a pre-existing Secret with tls.crt/tls.key/ca.crt keys. Required when
+    ## tls.enabled is true and tls.certManager.enabled is false.
+    existingSecret: ""
+
+  ## Peer certificate. Used for --peer-cert-file/--peer-key-file (member-to-member
+  ## traffic).
+  peer:
+    ## Name of a pre-existing Secret with tls.crt/tls.key/ca.crt keys. Required when
+    ## tls.enabled is true and tls.certManager.enabled is false.
+    existingSecret: ""

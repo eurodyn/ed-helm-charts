@@ -1,0 +1,163 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "helm.fullname" . }}
+  labels:
+    {{- include "helm.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "helm.headlessServiceName" . }}
+  replicas: {{ .Values.replicaCount | default 3 }}
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      {{- include "helm.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- include "helm.podAnnotations" . | nindent 8 }}
+      labels:
+        {{- include "helm.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- tpl (toYaml .) $ | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ include "helm.fullname" . }}
+          image: {{ include "helm.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+          ports:
+            {{- include "helm.containerPorts" . | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: {{ include "helm.metricsPort" . }}
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: {{ include "helm.metricsPort" . }}
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          env:
+            - name: K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: SERVICE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['app.kubernetes.io/serviceName']
+            - name: ETCDCTL_ENDPOINTS
+              value: $(HOSTNAME).$(SERVICE_NAME):{{ include "helm.clientPort" . }}
+            - name: URI_SCHEME
+              value: {{ .Values.tls.enabled | ternary "https" "http" | quote }}
+            {{- if .Values.tls.enabled }}
+            - name: ETCDCTL_KEY
+              value: /etc/etcd/certs/client/tls.key
+            - name: ETCDCTL_CERT
+              value: /etc/etcd/certs/client/tls.crt
+            - name: ETCDCTL_CACERT
+              value: /etc/etcd/certs/client/ca.crt
+            {{- end }}
+          command:
+            - /usr/local/bin/etcd
+          args:
+            - --name=$(HOSTNAME)
+            - --data-dir=/data
+            - --wal-dir=/data/wal
+            - --listen-peer-urls=$(URI_SCHEME)://0.0.0.0:{{ include "helm.serverPort" . }}
+            - --listen-client-urls=$(URI_SCHEME)://0.0.0.0:{{ include "helm.clientPort" . }}
+            - --advertise-client-urls=$(URI_SCHEME)://$(HOSTNAME).$(SERVICE_NAME):{{ include "helm.clientPort" . }}
+            - --initial-cluster-state={{ .Values.initialClusterState | default "new" }}
+            - --initial-cluster-token=etcd-$(K8S_NAMESPACE)
+            - {{ printf "--initial-cluster=%s" (include "helm.etcdInitialCluster" .) | quote }}
+            - --initial-advertise-peer-urls=$(URI_SCHEME)://$(HOSTNAME).$(SERVICE_NAME):{{ include "helm.serverPort" . }}
+            - --listen-metrics-urls=http://0.0.0.0:{{ include "helm.metricsPort" . }}
+            {{- if .Values.tls.enabled }}
+            ##
+            ## mTLS for the client-facing listener, reusing the etcdctl env vars above.
+            - --client-cert-auth
+            - --trusted-ca-file=$(ETCDCTL_CACERT)
+            - --cert-file=$(ETCDCTL_CERT)
+            - --key-file=$(ETCDCTL_KEY)
+            ##
+            ## mTLS for peer (member-to-member) traffic. Paths are part of the
+            ## "etcd-peer-tls" volume mount.
+            - --peer-client-cert-auth
+            - --peer-trusted-ca-file=/etc/etcd/certs/peer/ca.crt
+            - --peer-cert-file=/etc/etcd/certs/peer/tls.crt
+            - --peer-key-file=/etc/etcd/certs/peer/tls.key
+            {{- end }}
+            ##
+            ## These are some configurations you may want to consider enabling, but
+            ## should look into further to identify what settings are best for you.
+            # - --auto-compaction-mode=periodic
+            # - --auto-compaction-retention=10m
+          ##
+          ## This is the mount configuration.
+          volumeMounts:
+            - name: etcd-data
+              mountPath: /data
+            {{- if .Values.tls.enabled }}
+            - name: etcd-client-tls
+              mountPath: /etc/etcd/certs/client
+              readOnly: true
+            - name: etcd-peer-tls
+              mountPath: /etc/etcd/certs/peer
+              readOnly: true
+            {{- end }}
+            {{- with .Values.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      {{- if or .Values.tls.enabled .Values.volumes }}
+      volumes:
+        {{- if .Values.tls.enabled }}
+        - name: etcd-client-tls
+          secret:
+            secretName: {{ include "helm.clientTlsSecretName" . }}
+            optional: false
+        - name: etcd-peer-tls
+          secret:
+            secretName: {{ include "helm.peerTlsSecretName" . }}
+            optional: false
+        {{- end }}
+        {{- with .Values.volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: etcd-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size | default "10Gi" }}

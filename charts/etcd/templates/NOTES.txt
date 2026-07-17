@@ -1,0 +1,27 @@
+Thank you for installing {{ .Chart.Name }}.
+
+Your release is named "{{ .Release.Name }}" and has deployed an etcd StatefulSet
+with {{ .Values.replicaCount | default 3 }} replica(s) in the "{{ .Release.Namespace }}" namespace.
+
+Client endpoint (from within the cluster):
+
+  {{ include "helm.headlessServiceName" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ include "helm.clientPort" . }}
+
+Per-member client endpoints:
+{{- $replicas := int (.Values.replicaCount | default 3) }}
+{{- $name := include "helm.fullname" . }}
+{{- $svc := include "helm.headlessServiceName" . }}
+{{- range $i := until $replicas }}
+  {{ $name }}-{{ $i }}.{{ $svc }}.{{ $.Release.Namespace }}.svc.cluster.local:{{ include "helm.clientPort" $ }}
+{{- end }}
+
+To check cluster health:
+
+  kubectl exec -n {{ .Release.Namespace }} {{ include "helm.fullname" . }}-0 -- etcdctl endpoint health --cluster
+
+##
+## IMPORTANT: this chart currently has initialClusterState set to "{{ .Values.initialClusterState }}".
+## If you are scaling replicaCount up to grow an existing cluster, you must first
+## change initialClusterState to "existing" before applying the change, otherwise
+## the new members will fail to join.
+##
