@@ -8,11 +8,11 @@ A collection of Helm charts maintained by [European Dynamics SA](https://www.eur
 
 ## Usage
 
-Add the repository:
-
 ```console
 helm repo add ed-helm-charts https://eurodyn.github.io/ed-helm-charts
 helm repo update
+helm search repo ed-helm-charts
+helm install my-etcd ed-helm-charts/etcd
 ```
 
 ## Available charts
@@ -25,10 +25,6 @@ helm repo update
 ### etcd
 
 Deploys an [etcd](https://etcd.io/) cluster as a Kubernetes `StatefulSet`, with support for mTLS (via cert-manager or pre-existing secrets), PodDisruptionBudgets, and persistent per-member storage. See the [chart README](charts/etcd/README.md) for full configuration details.
-
-```console
-helm install my-etcd ed-helm-charts/etcd
-```
 
 ### kafka
 
