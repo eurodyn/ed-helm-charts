@@ -28,7 +28,7 @@
 {{- end -}}
 
 {{- /* etcd config (credentials injected via env, not written here) */ -}}
-{{- $etcdCfg := dict "rootPath" .Values.externalEtcd.rootPath -}}
+{{- $etcdCfg := dict "rootPath" (include "milvus-cluster.tplvalues.render" (dict "value" .Values.externalEtcd.rootPath "context" $)) -}}
 {{- if $etcdAuth -}}
 {{- $_ := set $etcdCfg "auth" (dict "enabled" true) -}}
 {{- end -}}
@@ -46,7 +46,7 @@
 {{- $_ := set $enforced "etcd" $etcdCfg -}}
 
 {{- /* minio (S3/Ozone) config */ -}}
-{{- $minio := dict "bucketName" .Values.externalStorage.bucketName "rootPath" .Values.externalStorage.rootPath "useSSL" .Values.externalStorage.useSSL "cloudProvider" .Values.externalStorage.cloudProvider "useVirtualHost" .Values.externalStorage.useVirtualHost -}}
+{{- $minio := dict "bucketName" (include "milvus-cluster.tplvalues.render" (dict "value" .Values.externalStorage.bucketName "context" $)) "rootPath" (include "milvus-cluster.tplvalues.render" (dict "value" .Values.externalStorage.rootPath "context" $)) "useSSL" .Values.externalStorage.useSSL "cloudProvider" .Values.externalStorage.cloudProvider "useVirtualHost" .Values.externalStorage.useVirtualHost -}}
 {{- if .Values.externalStorage.region -}}
 {{- $_ := set $minio "region" .Values.externalStorage.region -}}
 {{- end -}}
@@ -233,13 +233,13 @@ spec:
     etcd:
       external: true
       endpoints:
-        {{- toYaml .Values.externalEtcd.endpoints | nindent 8 }}
+        {{- include "milvus-cluster.tplvalues.render" (dict "value" .Values.externalEtcd.endpoints "context" $) | nindent 8 }}
     kafka:
       external: true
       brokerList:
-        {{- toYaml .Values.externalKafka.brokerList | nindent 8 }}
+        {{- include "milvus-cluster.tplvalues.render" (dict "value" .Values.externalKafka.brokerList "context" $) | nindent 8 }}
     storage:
       external: true
       type: S3
-      endpoint: {{ .Values.externalStorage.endpoint | quote }}
+      endpoint: {{ include "milvus-cluster.tplvalues.render" (dict "value" .Values.externalStorage.endpoint "context" $) | quote }}
       secretRef: {{ include "milvus-cluster.storageSecretName" . | quote }}

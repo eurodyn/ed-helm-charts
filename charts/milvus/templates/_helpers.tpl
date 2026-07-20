@@ -99,8 +99,11 @@ chart-managed name used when *.credentials.create is true.
 */}}
 
 {{/* NOTE: Secret *names* below are rendered through `tpl` so users may template
-     them (e.g. existingSecret: "{{`{{ .Release.Name }}`}}-kafka"). Only the NAME
-     is templated — credential VALUES are never passed through tpl. */}}
+     them (e.g. existingSecret: "{{`{{ .Release.Name }}`}}-kafka"). For an
+     existingSecret, only the NAME is templated — its data is read by Kubernetes
+     at runtime and never passes through tpl. The *.credentials.create literal
+     values (storage-secret.yaml / kafka-secret.yaml / etcd-secret.yaml) ARE also
+     rendered through tpl — see milvus-cluster.tplvalues.render above. */}}
 
 {{/* Ozone / S3 object-storage credential Secret (accesskey/secretkey). */}}
 {{- define "milvus-cluster.storageSecretName" -}}
@@ -157,13 +160,19 @@ Milvus custom resource (spec.config.*.ssl.*) and the mounted volumes.
 ------------------------------------------------------------------
 General value-rendering helper.
 Renders an arbitrary value (string / map / list) through `tpl` so that
-user-supplied values may contain Helm template expressions.
+user-supplied values may contain Helm template expressions (e.g. to pull a
+value from a shared/global values block instead of repeating a literal).
 
 Usage:
   {{ include "milvus-cluster.tplvalues.render" (dict "value" .Values.something "context" $) }}
 
-Do NOT use this on credential/Secret values — it must not double-render
-passwords or access keys.
+Also used on the *.credentials.create literal values (accessKey/secretKey,
+username/password) — safe because those are always hand-authored directly in
+a values file, same as the secret *names* below. Do NOT use this on a value
+that may originate from an external system outside the values-file author's
+control (a Vault/ESO-generated token, say) — it could coincidentally contain
+`{{`/`}}` and fail to render. existingSecret-sourced credentials are read by
+Kubernetes at runtime and never pass through here at all, so they're unaffected.
 ------------------------------------------------------------------
 */}}
 {{- define "milvus-cluster.tplvalues.render" -}}

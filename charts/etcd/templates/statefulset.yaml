@@ -87,6 +87,9 @@ spec:
             - name: ETCDCTL_CACERT
               value: /etc/etcd/certs/client/ca.crt
             {{- end }}
+            {{- with .Values.extraEnvVars }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           command:
             - /usr/local/bin/etcd
           args:

@@ -1,0 +1,125 @@
+# =============================================================================
+# Local values — wires Milvus to the etcd / Kafka / Ozone already deployed by
+# the `capollo-infra` "application" Helm chart (release name: capollo), in the
+# SAME namespace as Milvus. Endpoints below are short in-namespace Service
+# names for that reason; if Milvus ever moves to a different namespace, every
+# endpoint needs the `.<namespace>.svc.cluster.local` suffix instead.
+#
+#   helm upgrade --install milvus charts/milvus -n <capollo-namespace> \
+#     -f charts/milvus/values.local.yaml
+#
+# -----------------------------------------------------------------------------
+# ONE-TIME SETUP REQUIRED BEFORE INSTALLING (see the three sections below):
+#
+#   1. etcd  — mint a Milvus-only mTLS client certificate. Requires the etcd
+#      chart's `tls.extraClientCertificates` support (charts/etcd >= 0.2.0).
+#      Add to capollo-infra's `etcd:` values block, once that chart version is
+#      published and the dependency bumped:
+#
+#        etcd:
+#          tls:
+#            extraClientCertificates:
+#              - name: milvus
+#                secretName: milvus-etcd-client-tls
+#
+#      Then `helm dependency update && helm upgrade capollo ...` on
+#      capollo-infra. cert-manager issues `milvus-etcd-client-tls`
+#      automatically (ca.crt/tls.crt/tls.key), signed by the same CA/issuer as
+#      etcd's own client-listener certificate.
+#
+#   2. Kafka — Strimzi's auto-generated `capollo-kafka-user` Secret only holds
+#      a `password` key; Milvus needs one Secret with BOTH `username` and
+#      `password`. The username is just the KafkaUser resource's name
+#      (`capollo-kafka-user`), so mint a small companion Secret once:
+#
+#        kubectl create secret generic milvus-kafka-credentials -n <namespace> \
+#          --from-literal=username=capollo-kafka-user \
+#          --from-literal=password="$(kubectl get secret capollo-kafka-user \
+#            -n <namespace> -o jsonpath='{.data.password}' | base64 -d)"
+#
+#      Re-run this if the Strimzi User Operator ever rotates the password.
+#
+#   3. Ozone — the `capollo-vectordb` bucket is already created by the Ozone
+#      bootstrap Job (global.configs.ozone.bootstrap.buckets.milvus in
+#      capollo-infra). Credentials below (credentials.create) mirror
+#      capollo-infra's default global.credentials.ozone.s3AccessKey/
+#      s3SecretKey ("capollo"/"capollo") — update them here if that
+#      environment overrides those defaults.
+# =============================================================================
+
+image:
+  tag: v2.6.20
+
+milvus:
+  authorization:
+    enabled: true
+  components:
+    proxy:
+      replicas: 1
+    mixCoord:
+      replicas: 1
+      activeStandby: false        # single replica -> no active/standby
+    queryNode:
+      replicas: 1
+    dataNode:
+      replicas: 1
+    streamingNode:
+      replicas: 1
+
+# --- Apache Ozone (S3 Gateway), same namespace, no TLS (internal HTTP) ---
+externalStorage:
+  endpoint: capollo-s3g-rest:9878
+  bucketName: capollo-vectordb
+  rootPath: milvus
+  region: us-east-1
+  useSSL: false
+  cloudProvider: aws
+  useVirtualHost: false
+  existingSecret: ""             # cleared: using credentials.create below instead
+  credentials:
+    create: true
+    accessKey: capollo
+    secretKey: capollo
+  tls:
+    enabled: false
+
+# --- Kafka: SASL_SCRAM over TLS via the Strimzi "scram" listener (port 9093) ---
+externalKafka:
+  brokerList:
+    - capollo-kafka-kafka-bootstrap:9093
+  securityProtocol: SASL_SSL
+  saslMechanisms: SCRAM-SHA-512
+  existingSecret: milvus-kafka-credentials    # see step 2 above
+  usernameKey: username
+  passwordKey: password
+  tls:
+    enabled: true
+    existingSecret: capollo-kafka-cluster-ca-cert   # Strimzi cluster CA Secret, key ca.crt
+    caKey: ca.crt
+    mutualTLS: false
+
+# --- etcd: mTLS client cert, no username/password auth (chart has no RBAC support) ---
+externalEtcd:
+  endpoints:
+    - capollo-etcd-0.capollo-etcd-headless:2379
+    - capollo-etcd-1.capollo-etcd-headless:2379
+    - capollo-etcd-2.capollo-etcd-headless:2379
+  rootPath: capollo-milvus
+  authentication:
+    enabled: false
+  tls:
+    enabled: true
+    existingSecret: milvus-etcd-client-tls      # see step 1 above
+    caKey: ca.crt
+    certKey: tls.crt
+    keyKey: tls.key
+    minVersion: "1.2"
+
+serviceAccount:
+  create: true
+
+networkPolicy:
+  enabled: false
+
+serviceMonitor:
+  enabled: false

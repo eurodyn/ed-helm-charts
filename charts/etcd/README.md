@@ -82,6 +82,7 @@ kubectl delete pvc -l app.kubernetes.io/instance=my-etcd
 | `podSecurityContext`                   | Pod-level security context                     | `{fsGroup: 1001}`                       |
 | `securityContext`                      | Container-level security context               | `{runAsNonRoot: true, runAsUser: 1001}` |
 | `resources`                            | Container resource requests/limits             | `{limits: {cpu: 1, memory: 1Gi}, requests: {cpu: 300m, memory: 512Mi}}` |
+| `extraEnvVars`                         | Additional environment variables passed to the etcd container (etcd reads every `--flag` as an `ETCD_FLAG` env var) | `[]` |
 | `readinessProbe`                       | Readiness probe configuration (`/readyz`)      | See `values.yaml`                       |
 | `livenessProbe`                        | Liveness probe configuration (`/livez`)        | See `values.yaml`                       |
 | `volumes`                              | Additional volumes added to the pod            | `[]`                                    |
@@ -110,6 +111,7 @@ kubectl delete pvc -l app.kubernetes.io/instance=my-etcd
 | `tls.certManager.renewBefore`     | How long before expiry cert-manager renews the certificates                                     | `360h` (15d)    |
 | `tls.client.existingSecret`       | Name of a pre-existing Secret (`tls.crt`/`tls.key`/`ca.crt`) for the client listener. Required when `tls.enabled=true` and `tls.certManager.enabled=false` | `""` |
 | `tls.peer.existingSecret`         | Name of a pre-existing Secret (`tls.crt`/`tls.key`/`ca.crt`) for peer traffic. Required when `tls.enabled=true` and `tls.certManager.enabled=false` | `""` |
+| `tls.extraClientCertificates`     | Extra `{name, secretName}` entries; each issues a client-auth-only certificate from the same CA/issuer, for external consumers (e.g. Milvus) that need an mTLS client identity but aren't etcd members. Only rendered when `tls.certManager.enabled=true` | `[]` |
 
 ## Configuration and installation details
 
@@ -172,6 +174,20 @@ Certificates can be sourced two ways:
 
    (repeat for the peer secret), then `--set tls.client.existingSecret=my-etcd-client-tls --set tls.peer.existingSecret=my-etcd-peer-tls`.
 
+**External client identities (`tls.extraClientCertificates`)** — the client-listener secret (`tls.client.existingSecret` / the chart-issued `<fullname>-client-tls`) is shared by every etcd pod and reused by the in-container `etcdctl`; it isn't meant to be handed to consumers outside the cluster. Since `--client-cert-auth` accepts any certificate signed by the trusted CA regardless of its DNS SANs, external consumers (e.g. a Milvus deployment pointing `externalEtcd.tls.existingSecret` at this cluster) need their own certificate instead. When `tls.certManager.enabled: true`, add an entry to `tls.extraClientCertificates` and the chart issues one additional `client auth`-only `Certificate` per entry, signed by the same issuer as the client/peer certs:
+
+```yaml
+tls:
+  enabled: true
+  certManager:
+    enabled: true
+  extraClientCertificates:
+    - name: milvus
+      secretName: milvus-etcd-client-tls
+```
+
+This only works with `tls.certManager.enabled: true` (the chart needs an `Issuer`/`ClusterIssuer` to sign from). If you're supplying pre-existing secrets instead (`tls.certManager.enabled: false`), mint the extra client certificate the same way you minted `tls.client.existingSecret` — signed by the same CA - and create its Secret out-of-band.
+
 **Notes:**
 - Certificate rotation doesn't require a pod restart: the certs are mounted as a Secret volume (kubelet resyncs mounted Secret contents on its normal sync interval, ~1 minute by default), and etcd has reloaded its cert/key/CA files from disk on every new TLS connection since v3.2.0 — no watch/restart involved, and the docs note the per-connection overhead is negligible. No `checksum/config`-style annotation or rollout is needed; long-lived peer connections pick up the new material once they reconnect, which the default 15-day `renewBefore` window comfortably covers.
 - On first install with `tls.certManager.enabled: true`, pods may sit in `ContainerCreating` for a few seconds until cert-manager finishes issuing the Secrets — this is expected.
@@ -184,6 +200,20 @@ By default the chart creates a PodDisruptionBudget with `maxUnavailable: 1`, whi
 ### Persistence
 
 The chart uses `volumeClaimTemplates` to provision one PVC per replica (`etcd-data`), sized via `persistence.size`. Because `volumeClaimTemplates` are immutable, changing the size after installation requires manually resizing the underlying PVCs (if your storage class supports it) or recreating the `StatefulSet`.
+
+### Extra environment variables
+
+`extraEnvVars` is appended verbatim to the etcd container's `env:` list. Since etcd reads every `--flag` command-line option from an equivalent `ETCD_FLAG` environment variable, this is the escape hatch for tuning etcd without the chart needing to expose a dedicated value for each flag. The most common case is backing a [Milvus](https://milvus.io/) cluster, whose metadata footprint tends to outgrow etcd's defaults:
+
+```yaml
+extraEnvVars:
+  - name: ETCD_QUOTA_BACKEND_BYTES   # raise the 2Gi backend quota (Milvus's own etcd chart defaults to 4Gi)
+    value: "4294967296"
+  - name: ETCD_HEARTBEAT_INTERVAL    # etcd's own guidance for slower disks/networks
+    value: "500"
+  - name: ETCD_ELECTION_TIMEOUT
+    value: "2500"
+```
 
 ## Checking cluster health
 

@@ -56,6 +56,18 @@ resources:
     cpu: 200m
     memory: 256Mi
 
+## Additional environment variables passed straight to the etcd container. Since etcd
+## reads every one of its `--flag` options from an equivalent `ETCD_FLAG` env var, this
+## is how you tune things the chart doesn't expose directly, e.g. the backend quota or
+## the heartbeat/election timeouts recommended for etcd instances backing Milvus:
+extraEnvVars: []
+# - name: ETCD_QUOTA_BACKEND_BYTES
+#   value: "4294967296"   # 4Gi, up from etcd's 2Gi default
+# - name: ETCD_HEARTBEAT_INTERVAL
+#   value: "500"
+# - name: ETCD_ELECTION_TIMEOUT
+#   value: "2500"
+
 # Readiness probe configuration for the etcd container
 readinessProbe:
   initialDelaySeconds: 10
@@ -147,3 +159,14 @@ tls:
     ## Name of a pre-existing Secret with tls.crt/tls.key/ca.crt keys. Required when
     ## tls.enabled is true and tls.certManager.enabled is false.
     existingSecret: ""
+
+  ## Extra client-auth-only certificates, issued via cert-manager from the SAME CA/issuer
+  ## as the client/peer certificates above. Use this to hand out mTLS client identities to
+  ## external consumers (e.g. Milvus's externalEtcd.tls) that aren't etcd members themselves
+  ## and so shouldn't reuse the client-listener secret. Only rendered when
+  ## tls.enabled and tls.certManager.enabled are both true; ignored otherwise.
+  extraClientCertificates: []
+  ## Example:
+  # extraClientCertificates:
+  #   - name: milvus
+  #     secretName: milvus-etcd-client-tls

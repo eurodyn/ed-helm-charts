@@ -108,6 +108,13 @@
     "resources": {
       "type": "object"
     },
+    "extraEnvVars": {
+      "description": "Additional environment variables passed to the etcd container",
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
     "readinessProbe": {
       "type": "object",
       "properties": {
@@ -240,6 +247,24 @@
             "existingSecret": {
               "type": "string"
             }
+          }
+        },
+        "extraClientCertificates": {
+          "description": "Extra client-auth-only certificates issued via cert-manager from the same CA, for external consumers that need an mTLS client identity",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "secretName": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": ["name", "secretName"]
           }
         }
       },

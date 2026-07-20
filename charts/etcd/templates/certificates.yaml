@@ -89,4 +89,26 @@ spec:
     - 127.0.0.1
   issuerRef:
     {{- include "helm.certManagerIssuerRef" . | nindent 4 }}
+
+{{- range .Values.tls.extraClientCertificates }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "helm.fullname" $ }}-{{ .name }}-client-tls
+  labels:
+    {{- include "helm.labels" $ | nindent 4 }}
+spec:
+  secretName: {{ .secretName }}
+  duration: {{ $.Values.tls.certManager.duration | quote }}
+  renewBefore: {{ $.Values.tls.certManager.renewBefore | quote }}
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  usages:
+    - client auth
+  commonName: {{ .name }}
+  issuerRef:
+    {{- include "helm.certManagerIssuerRef" $ | nindent 4 }}
+{{- end }}
 {{- end }}
