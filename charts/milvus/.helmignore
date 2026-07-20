@@ -1,0 +1,25 @@
+# Patterns to ignore when building Helm packages.
+.DS_Store
+.git/
+.gitignore
+.bzr/
+.hg/
+.hgignore
+.svn/
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+.project
+.idea/
+*.tmproj
+.vscode/
+
+# CI-only values and rendered output should not ship inside the packaged chart.
+ci/
+rendered.yaml
+*.rendered.yaml
+
+# Documentation source that is not needed at runtime.
+*.md.tmpl

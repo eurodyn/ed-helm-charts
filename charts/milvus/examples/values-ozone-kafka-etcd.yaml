@@ -1,0 +1,80 @@
+# =============================================================================
+# Focused example: Apache Ozone (S3G) + Kafka (SASL_SSL) + etcd (TLS + auth),
+# all external, all backed by EXISTING Kubernetes Secrets.
+#
+# Expected Secrets (create them out-of-band, e.g. via ESO — see external-secrets.yaml):
+#
+#   milvus-ozone-credentials   keys: accesskey, secretkey
+#   milvus-ozone-ca            keys: ca.crt
+#   milvus-kafka-credentials   keys: username, password
+#   milvus-kafka-ca            keys: ca.crt (+ tls.crt/tls.key if mutualTLS)
+#   milvus-etcd-credentials    keys: username, password
+#   milvus-etcd-tls            keys: ca.crt, tls.crt, tls.key
+# =============================================================================
+
+image:
+  tag: v2.6.20
+
+milvus:
+  authorization:
+    enabled: true
+  components:
+    proxy: { replicas: 2 }
+    mixCoord: { replicas: 2, activeStandby: true }
+    queryNode: { replicas: 2 }
+    dataNode: { replicas: 2 }
+    streamingNode: { replicas: 2 }
+
+# --- Apache Ozone via the external S3 Gateway (path-style, TLS) ---
+externalStorage:
+  endpoint: ozone-s3g.storage.example.internal:9879
+  bucketName: milvus-production
+  rootPath: milvus/production
+  region: us-east-1
+  useSSL: true
+  cloudProvider: aws
+  useVirtualHost: false            # Ozone requires path-style
+  existingSecret: milvus-ozone-credentials
+  tls:
+    enabled: true
+    existingSecret: milvus-ozone-ca
+    caKey: ca.crt
+    minVersion: "1.2"
+
+# --- Kafka with SASL_SSL / SCRAM-SHA-512 ---
+externalKafka:
+  brokerList:
+    - kafka-0.kafka.example.internal:9093
+    - kafka-1.kafka.example.internal:9093
+    - kafka-2.kafka.example.internal:9093
+  securityProtocol: SASL_SSL
+  saslMechanisms: SCRAM-SHA-512
+  existingSecret: milvus-kafka-credentials
+  usernameKey: username
+  passwordKey: password
+  tls:
+    enabled: true
+    existingSecret: milvus-kafka-ca
+    caKey: ca.crt
+    mutualTLS: false
+    minVersion: "1.2"
+
+# --- etcd with TLS and authentication ---
+externalEtcd:
+  endpoints:
+    - etcd-0.etcd.example.internal:2379
+    - etcd-1.etcd.example.internal:2379
+    - etcd-2.etcd.example.internal:2379
+  rootPath: milvus-production
+  existingSecret: milvus-etcd-credentials
+  usernameKey: username
+  passwordKey: password
+  authentication:
+    enabled: true
+  tls:
+    enabled: true
+    existingSecret: milvus-etcd-tls
+    caKey: ca.crt
+    certKey: tls.crt
+    keyKey: tls.key
+    minVersion: "1.2"

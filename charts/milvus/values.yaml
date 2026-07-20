@@ -1,0 +1,500 @@
+# =============================================================================
+# milvus-cluster — default values
+# =============================================================================
+# This chart creates a single `milvus.io/v1beta1` Milvus custom resource (plus
+# optional supporting Secrets / ServiceAccount / NetworkPolicy / ServiceMonitor)
+# and hands it to the already-installed Milvus Operator, which reconciles the
+# actual Milvus workloads.
+#
+# IMPORTANT - EXTERNAL DEPENDENCIES ONLY:
+#   This chart does NOT deploy Kafka, etcd, Apache Ozone, Ozone S3 Gateway,
+#   MinIO, Pulsar, BookKeeper, ZooKeeper or Woodpecker. Every dependency must
+#   already exist and be reachable from the Milvus pods.
+# =============================================================================
+
+# -- Override the chart name portion of resource names. Cosmetic; safe to change
+#    before first install. Not required.
+nameOverride: ""
+# -- Override the full resource name (also becomes the Milvus CR metadata.name).
+#    Changing this AFTER install creates a *new, empty* Milvus cluster and orphans
+#    the old one — treat it as immutable once data exists. Not required.
+fullnameOverride: ""
+
+# =============================================================================
+# Milvus server image
+# =============================================================================
+image:
+  # -- Milvus server image repository. Required.
+  repository: milvusdb/milvus
+  # -- Milvus image tag. This chart is validated against Milvus 2.6.x. Required.
+  #    Changing the major/minor version after install triggers a rolling upgrade
+  #    reconciled by the Operator — read the Milvus upgrade notes first.
+  tag: v2.6.20
+  # -- Image pull policy. One of Always | IfNotPresent | Never. Not required.
+  pullPolicy: IfNotPresent
+  # -- Image pull secrets (list of {name: <secret>}). These reference EXISTING
+  #    docker-registry Secrets in the release namespace. Not required.
+  pullSecrets: []
+  # - name: my-registry-cred
+
+# =============================================================================
+# Milvus deployment settings
+# =============================================================================
+milvus:
+  # -- Deployment mode. MUST be "cluster" for this chart. Standalone is rejected
+  #    by validation. Required. Immutable after install.
+  mode: cluster
+
+  authorization:
+    # -- Enable Milvus RBAC / authentication (common.security.authorizationEnabled).
+    #    Enabled by default (production-safe). Disabling it makes Milvus open to any
+    #    client that can reach the Proxy — do not disable in production. Not required
+    #    to change. Changing after install affects how clients authenticate.
+    enabled: true
+
+  logging:
+    # -- Log level: trace | debug | info | warn | error | panic | fatal. Not required.
+    level: info
+    # -- Log format: "json" (structured, recommended) or "text". Rendered into
+    #    Milvus config as JSON/text. Not required.
+    format: json
+
+  # -- Free-form pass-through Milvus runtime configuration merged into the Milvus
+  #    CR `spec.config`. Anything valid in Milvus 2.6 `milvus.yaml` may go here
+  #    (e.g. quotaAndLimits, dataCoord.segment, proxy.*). See MERGE PRECEDENCE in
+  #    README: base defaults < this map < mandatory chart-enforced dependency keys.
+  #    You cannot use this to switch to internal dependencies or a non-Kafka message
+  #    stream — those keys are always enforced by the chart. Not required.
+  #    Values may contain Helm template expressions (rendered with tpl).
+  config: {}
+  #   quotaAndLimits:
+  #     dml:
+  #       enabled: true
+
+  components:
+    # -- Global pod-level settings applied to ALL Milvus components (proxy,
+    #    mixCoord, queryNode, dataNode, streamingNode) via the Operator's inlined
+    #    ComponentSpec. Per-component overrides are not exposed for these keys by
+    #    default; add them under `milvus.config`-adjacent CR fields if you need
+    #    finer control. All maps/lists below are rendered through tpl.
+    global:
+      # -- Extra pod labels for all components. Not required.
+      podLabels: {}
+      # -- Extra pod annotations for all components. Not required.
+      podAnnotations: {}
+      # -- Node selector for all component pods. Not required.
+      nodeSelector: {}
+      # -- Affinity rules for all component pods (corev1.Affinity). Not required.
+      affinity: {}
+      # -- Tolerations for all component pods (list of corev1.Toleration). Not required.
+      tolerations: []
+      # -- Topology spread constraints for all component pods
+      #    (list of corev1.TopologySpreadConstraint). Recommended in production to
+      #    spread replicas across zones/nodes. Not required.
+      topologySpreadConstraints: []
+      # -- PriorityClassName for all component pods. Not required.
+      priorityClassName: ""
+      # -- Pod-level security context (free-form map passed through to the Operator's
+      #    `securityContext` field). Not required. Verify non-root compatibility with
+      #    your Milvus image before enabling runAsNonRoot.
+      securityContext: {}
+      # -- Extra environment variables for all component pods (list of corev1.EnvVar).
+      #    This is the supported mechanism for injecting Secret-backed values via
+      #    valueFrom.secretKeyRef. Not required.
+      env: []
+      # -- Extra volumes for all component pods (free-form list of corev1.Volume).
+      #    TLS Secret volumes are added automatically when *.tls.enabled is true;
+      #    anything here is merged in addition. Not required.
+      volumes: []
+      # -- Extra volume mounts for all component pods (list of corev1.VolumeMount).
+      #    TLS mounts are added automatically; anything here is merged. Not required.
+      volumeMounts: []
+
+    # ---- Proxy: client-facing gateway (gRPC 19530 / REST 9091) ----
+    proxy:
+      # -- Proxy replicas. Must be >= 1. Required.
+      replicas: 2
+      # -- Proxy Service type: ClusterIP | NodePort | LoadBalancer. Defaults to
+      #    ClusterIP (no public exposure). Only Proxy supports a Service type in the
+      #    CRD. Required.
+      serviceType: ClusterIP
+      # -- Proxy resource requests/limits (corev1.ResourceRequirements). Not required
+      #    but strongly recommended in production.
+      resources:
+        requests:
+          cpu: "500m"
+          memory: 1Gi
+        limits:
+          cpu: "2"
+          memory: 4Gi
+
+    # ---- MixCoord: unified coordinator (root/data/query coordinators merged) ----
+    mixCoord:
+      # -- MixCoord replicas. Must be >= 2 when activeStandby is true. Required.
+      replicas: 2
+      # -- Enable MixCoord active/standby HA (config mixCoord.enableActiveStandby).
+      #    When true, one replica is active and the rest stand by. Requires replicas >= 2.
+      #    Recommended in production. Not required to change.
+      activeStandby: true
+      # -- MixCoord resource requests/limits. Recommended in production.
+      resources:
+        requests:
+          cpu: "500m"
+          memory: 1Gi
+        limits:
+          cpu: "2"
+          memory: 4Gi
+
+    # ---- QueryNode: serves vector search / query ----
+    queryNode:
+      # -- QueryNode replicas. Must be >= 1. Required.
+      replicas: 2
+      # -- QueryNode resource requests/limits. Query is memory- and CPU-intensive;
+      #    size generously in production. Recommended.
+      resources:
+        requests:
+          cpu: "1"
+          memory: 4Gi
+        limits:
+          cpu: "4"
+          memory: 16Gi
+
+    # ---- DataNode: handles data persistence / flush / compaction ----
+    dataNode:
+      # -- DataNode replicas. Must be >= 1. Required.
+      replicas: 2
+      # -- DataNode resource requests/limits. Recommended.
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "4"
+          memory: 8Gi
+
+    # ---- StreamingNode: Milvus 2.6 streaming / WAL service ----
+    streamingNode:
+      # -- StreamingNode replicas. Must be >= 1. Required. (Streaming mode is always
+      #    enabled by this chart via spec.components.streamingMode=true.)
+      replicas: 2
+      # -- StreamingNode resource requests/limits. Recommended.
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "4"
+          memory: 8Gi
+
+# =============================================================================
+# External Apache Ozone (S3 Gateway) object storage
+# =============================================================================
+# Accessed strictly as external S3-compatible storage via the Operator's
+# `spec.dependencies.storage` (external: true, type: S3, secretRef). The chart
+# never deploys Ozone or the S3 Gateway.
+externalStorage:
+  # -- Ozone S3 Gateway endpoint as host:port WITHOUT a URL scheme. Required.
+  #    Use externalStorage.useSSL to select HTTP vs HTTPS. Do NOT prefix https://.
+  endpoint: ozone-s3g.storage.example.internal:9879
+  # -- Target bucket for Milvus data. Must already exist in Ozone. Required.
+  #    Changing after data is written points Milvus at a different/empty dataset.
+  bucketName: milvus-production
+  # -- Object-key prefix (rootPath) inside the bucket. Required. Changing after
+  #    data is written orphans existing objects.
+  rootPath: milvus/production
+  # -- S3 region string. Ozone generally ignores it but Milvus requires a value.
+  #    Not required to change.
+  region: us-east-1
+  # -- Use HTTPS to reach the S3 Gateway (minio.useSSL). Defaults to true. Not required.
+  useSSL: true
+  # -- Cloud provider hint for the Milvus S3 client. Fixed to "aws" for generic
+  #    S3-compatible services such as Ozone. Not required to change.
+  cloudProvider: aws
+  # -- Use virtual-host bucket addressing. Ozone uses PATH-style addressing, so this
+  #    MUST stay false for Ozone. Not required to change.
+  useVirtualHost: false
+
+  # -- Name of an EXISTING Kubernetes Secret holding object-storage credentials.
+  #    REQUIRED when credentials.create is false. The Secret MUST contain keys
+  #    `accesskey` and `secretkey` (exact names expected by the Milvus Operator).
+  existingSecret: milvus-ozone-credentials
+
+  credentials:
+    # -- Create a chart-managed credential Secret instead of using existingSecret.
+    #    Defaults to false. When true, existingSecret must be empty. NOT suitable for
+    #    Git-based/GitOps workflows unless the values are encrypted (SOPS/Sealed
+    #    Secrets/etc). Requires an existing Secret when false.
+    create: false
+    # -- S3 access key. Only used when credentials.create is true. Leave empty
+    #    otherwise. NEVER commit a real value. Security-sensitive.
+    accessKey: ""
+    # -- S3 secret key. Only used when credentials.create is true. Leave empty
+    #    otherwise. NEVER commit a real value. Security-sensitive.
+    secretKey: ""
+
+  tls:
+    # -- Trust a private CA for the HTTPS S3 Gateway (mounts CA and sets
+    #    minio.ssl.tlsCACert). Requires useSSL: true to have any effect. Not required.
+    enabled: true
+    # -- EXISTING Secret containing the CA certificate. Required when tls.enabled.
+    existingSecret: milvus-ozone-ca
+    # -- Key within the TLS Secret holding the CA cert. Not required (default ca.crt).
+    caKey: ca.crt
+    # -- Skip TLS certificate verification. MUST stay false in production. NOTE:
+    #    Milvus 2.6 exposes no runtime toggle for this on object storage, so this is
+    #    a no-op guard retained for interface consistency — it is validated to be
+    #    false and is never rendered. Not required.
+    insecureSkipVerify: false
+    # -- Minimum TLS version (minio.ssl.tlsMinVersion), e.g. "1.2" or "1.3". Not required.
+    minVersion: "1.2"
+
+# =============================================================================
+# External Kafka (message stream / WAL backend)
+# =============================================================================
+# Kafka is the ONLY supported message stream for this chart. Configured via
+# `spec.dependencies.kafka` (external: true, brokerList) and `spec.config.kafka`.
+# The Milvus Operator 1.3.x provides NO secretRef for Kafka. SASL credentials are
+# therefore NEVER written into the Milvus CR as plaintext: instead they are
+# projected into the Milvus pods as environment variables
+# (KAFKA_SASLUSERNAME / KAFKA_SASLPASSWORD) via valueFrom.secretKeyRef, which the
+# Milvus config loader consumes as overrides for kafka.saslUsername/saslPassword.
+# The Secret may be an existing one or chart-created (dev only).
+externalKafka:
+  # -- Kafka broker addresses (host:port). At least one is required; every entry
+  #    must be non-empty. Required.
+  brokerList:
+    - kafka-0.kafka.example.internal:9093
+    - kafka-1.kafka.example.internal:9093
+    - kafka-2.kafka.example.internal:9093
+
+  # -- Kafka security protocol: PLAINTEXT | SSL | SASL_PLAINTEXT | SASL_SSL.
+  #    Defaults to SASL_SSL (encrypted + authenticated). Required.
+  securityProtocol: SASL_SSL
+  # -- SASL mechanism: PLAIN | SCRAM-SHA-256 | SCRAM-SHA-512. Used only when a SASL_*
+  #    security protocol is selected. Required for SASL.
+  saslMechanisms: SCRAM-SHA-512
+
+  # -- Name of an EXISTING Secret that stores Kafka SASL credentials. Because the
+  #    Operator cannot reference it directly for Kafka, the chart consumes it by
+  #    projecting its keys into the Milvus pods as environment variables and
+  #    referencing them from spec.config.kafka. Required when credentials.create is
+  #    false and a SASL protocol is used. See usernameKey / passwordKey.
+  existingSecret: milvus-kafka-credentials
+  # -- Key in existingSecret holding the SASL username. Not required (default username).
+  usernameKey: username
+  # -- Key in existingSecret holding the SASL password. Not required (default password).
+  passwordKey: password
+
+  credentials:
+    # -- Create a chart-managed Kafka credential Secret from username/password below
+    #    instead of using existingSecret. Defaults to false. When true, existingSecret
+    #    must be empty. Not suitable for Git unless encrypted.
+    create: false
+    # -- SASL username. Only used when credentials.create is true. Security-sensitive;
+    #    never commit a real value.
+    username: ""
+    # -- SASL password. Only used when credentials.create is true. Security-sensitive;
+    #    never commit a real value.
+    password: ""
+
+  tls:
+    # -- Enable TLS to Kafka (SSL / SASL_SSL). Mounts CA (and client cert/key for
+    #    mTLS) and sets spec.config.kafka.ssl.*. Required when using an SSL protocol
+    #    with a private CA. Not required otherwise.
+    enabled: true
+    # -- EXISTING Secret holding the Kafka CA (and optional client cert/key).
+    #    Required when tls.enabled.
+    existingSecret: milvus-kafka-ca
+    # -- Key in the TLS Secret holding the CA certificate. Default ca.crt. Not required.
+    caKey: ca.crt
+    # -- Key holding the client certificate (mutual TLS only). Default tls.crt. Not required.
+    certKey: tls.crt
+    # -- Key holding the client private key (mutual TLS only). Default tls.key. Not required.
+    keyKey: tls.key
+    # -- Enable mutual TLS. When true, certKey and keyKey must be present in the Secret.
+    #    Not required.
+    mutualTLS: false
+    # -- Skip TLS verification. MUST stay false in production. Milvus 2.6 exposes no
+    #    Kafka runtime toggle for this, so it is validated-only and never rendered.
+    #    Not required.
+    insecureSkipVerify: false
+    # -- Minimum TLS version. NOTE: Milvus 2.6 Kafka config has no tlsMinVersion key,
+    #    so this is not rendered for Kafka (retained for interface consistency). Not
+    #    required.
+    minVersion: "1.2"
+
+# =============================================================================
+# External etcd (metadata store)
+# =============================================================================
+# Configured via `spec.dependencies.etcd` (external: true, endpoints) and
+# `spec.config.etcd`. The Operator provides NO secretRef for etcd; auth
+# credentials are handled like Kafka: projected into the pods as env vars
+# (ETCD_AUTH_USERNAME / ETCD_AUTH_PASSWORD) via valueFrom.secretKeyRef, never as
+# plaintext in the CR. TLS material is mounted read-only from a Secret.
+externalEtcd:
+  # -- etcd endpoints (host:port). At least one required; every entry non-empty.
+  #    Required.
+  endpoints:
+    - etcd-0.etcd.example.internal:2379
+    - etcd-1.etcd.example.internal:2379
+    - etcd-2.etcd.example.internal:2379
+
+  # -- Unique metadata root path (spec.config.etcd.rootPath). REQUIRED. MUST be
+  #    unique per Milvus cluster when several clusters share one etcd. MUST be chosen
+  #    before the first deployment. Changing it after Milvus has data makes existing
+  #    metadata inaccessible. Must not be the unsafe default "by-dev".
+  rootPath: milvus-production
+
+  # -- EXISTING Secret holding etcd auth credentials. Consumed via env projection into
+  #    the Milvus pods (the Operator has no etcd secretRef). Required when
+  #    authentication.enabled is true and authentication.createSecret is false.
+  existingSecret: milvus-etcd-credentials
+  # -- Key holding the etcd username. Default username. Not required.
+  usernameKey: username
+  # -- Key holding the etcd password. Default password. Not required.
+  passwordKey: password
+
+  authentication:
+    # -- Enable etcd authentication (spec.config.etcd.auth.enabled). Not required.
+    enabled: true
+    # -- Create a chart-managed etcd credential Secret from username/password below
+    #    instead of using existingSecret. Defaults to false. Mutually exclusive with
+    #    existingSecret. Not suitable for Git unless encrypted.
+    createSecret: false
+    # -- etcd username. Only used when createSecret is true. Security-sensitive.
+    username: ""
+    # -- etcd password. Only used when createSecret is true. Security-sensitive.
+    password: ""
+
+  tls:
+    # -- Enable TLS to etcd (spec.config.etcd.ssl.enabled). Mounts CA (+ client
+    #    cert/key) and sets file paths. Not required.
+    enabled: true
+    # -- EXISTING Secret holding the etcd CA and client cert/key. Required when
+    #    tls.enabled.
+    existingSecret: milvus-etcd-tls
+    # -- Key holding the CA certificate. Default ca.crt. Not required.
+    caKey: ca.crt
+    # -- Key holding the client certificate. Default tls.crt. Not required.
+    certKey: tls.crt
+    # -- Key holding the client private key. Default tls.key. Not required.
+    keyKey: tls.key
+    # -- Skip TLS verification. MUST stay false; Milvus 2.6 etcd config has no such
+    #    toggle, so it is validated-only and never rendered. Not required.
+    insecureSkipVerify: false
+    # -- Minimum TLS version (spec.config.etcd.ssl.tlsMinVersion), e.g. "1.2"/"1.3".
+    #    Not required.
+    minVersion: "1.2"
+
+# =============================================================================
+# ServiceAccount
+# =============================================================================
+serviceAccount:
+  # -- Create a ServiceAccount and set it as spec.components.serviceAccountName on
+  #    the Milvus CR. Defaults to true. Not required to change.
+  create: true
+  # -- Name to use. Defaults to the chart fullname when create is true. Not required.
+  name: ""
+  # -- Annotations for the ServiceAccount (e.g. cloud workload-identity / IRSA). The
+  #    default external Ozone setup uses access/secret keys, so annotations are
+  #    optional. Rendered through tpl. Not required.
+  annotations: {}
+  # -- Extra labels for the ServiceAccount. Rendered through tpl. Not required.
+  labels: {}
+
+# =============================================================================
+# NetworkPolicy (optional, disabled by default)
+# =============================================================================
+# Standard Kubernetes NetworkPolicy cannot match external DNS names. When Kafka /
+# etcd / Ozone live outside the cluster you MUST supply their IP CIDRs here, or use
+# a CNI that supports FQDN policies. No CIDRs are guessed or defaulted.
+networkPolicy:
+  # -- Create a NetworkPolicy for the Milvus pods. Defaults to false. Not required.
+  enabled: false
+  ingress:
+    # -- Allow ingress to the Milvus Proxy from these sources. Empty = allow none
+    #    (deny). Provide namespaceSelector / podSelector / ipBlock peers. Not required.
+    from: []
+    # -- Ports exposed by the Proxy to allow. Defaults cover gRPC 19530 and REST 9091.
+    ports:
+      - port: 19530
+        protocol: TCP
+      - port: 9091
+        protocol: TCP
+    # -- Allow Prometheus scraping of the metrics port (9091) from these peers.
+    prometheus:
+      from: []
+  egress:
+    # -- Allow DNS egress (UDP/TCP 53). Recommended when a default-deny egress policy
+    #    is in effect. Not required.
+    dns:
+      enabled: true
+    # -- Egress peers/ports for the Ozone S3 Gateway. Supply ipBlock CIDRs for
+    #    external endpoints. Not required.
+    storage:
+      to: []
+      ports:
+        - port: 9879
+          protocol: TCP
+    # -- Egress peers/ports for Kafka brokers. Supply ipBlock CIDRs. Not required.
+    kafka:
+      to: []
+      ports:
+        - port: 9093
+          protocol: TCP
+    # -- Egress peers/ports for etcd endpoints. Supply ipBlock CIDRs. Not required.
+    etcd:
+      to: []
+      ports:
+        - port: 2379
+          protocol: TCP
+    # -- Additional arbitrary egress rules (list of networking.k8s.io/v1 egress rules).
+    #    Not required.
+    extra: []
+
+# =============================================================================
+# ServiceMonitor (optional, disabled by default)
+# =============================================================================
+# Prometheus-Operator ServiceMonitor for the Milvus metrics endpoints. Milvus
+# exposes Prometheus metrics on port 9091 (path /metrics). The selector below
+# targets the Services created by the Milvus Operator; VERIFY the labels/port on
+# your cluster (see README "Monitoring") before enabling, as they can vary by
+# Operator version.
+serviceMonitor:
+  # -- Create a ServiceMonitor. Defaults to false (verify selectors first). Not required.
+  enabled: false
+  # -- Scrape interval. Not required.
+  interval: 30s
+  # -- Scrape timeout. Not required.
+  scrapeTimeout: 10s
+  # -- Extra labels for the ServiceMonitor (e.g. the label your Prometheus selects
+  #    ServiceMonitors by, such as `release: kube-prometheus-stack`). Not required.
+  labels: {}
+  # -- Label selector matching the Milvus metrics Service(s). Defaults target the
+  #    Operator-managed Services for this release. VERIFY on your cluster. Not required.
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: ""
+  # -- Namespace(s) to search for the target Service. Defaults to the release namespace.
+  #    Not required.
+  namespaceSelector: {}
+  # -- Name of the Service port exposing metrics. VERIFY with `kubectl get svc`. Not required.
+  portName: metrics
+  # -- Metrics path. Not required.
+  path: /metrics
+
+# =============================================================================
+# Operator CRD presence check
+# =============================================================================
+# -- When true, `helm install`/`upgrade` fails fast if the milvus.io/v1beta1 CRD is
+#    not present in the cluster. Keep false so offline `helm template` works; enable
+#    in live installs for a clearer error when the Operator is missing. Not required.
+strictCRDCheck: false
+
+# =============================================================================
+# Extra metadata applied to every resource this chart creates
+# =============================================================================
+# -- Extra labels merged onto all rendered objects. Rendered through tpl. Not required.
+extraLabels: {}
+# -- Extra annotations merged onto all rendered objects. Rendered through tpl. Not required.
+extraAnnotations: {}

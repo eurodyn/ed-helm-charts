@@ -1,0 +1,79 @@
+{{- /*
+Optional NetworkPolicy for the Milvus pods.
+
+IMPORTANT: standard Kubernetes NetworkPolicy cannot match external DNS names.
+Kafka, etcd and Ozone live OUTSIDE the cluster in this architecture, so egress
+to them must be expressed as ipBlock CIDRs (supply them under
+networkPolicy.egress.{storage,kafka,etcd}.to) OR you must use a CNI that supports
+FQDN/DNS egress policies. No CIDRs are guessed here.
+
+The podSelector below targets the pods the Milvus Operator creates for this
+release using the `app.kubernetes.io/instance` label it propagates. VERIFY the
+actual labels on your cluster with:
+  kubectl -n {{ .Release.Namespace }} get pods --show-labels
+and adjust if your Operator version differs.
+*/ -}}
+{{- if .Values.networkPolicy.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "milvus-cluster.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "milvus-cluster.labels" . | nindent 4 }}
+  {{- with .Values.extraAnnotations }}
+  annotations:
+    {{- include "milvus-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 4 }}
+  {{- end }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ include "milvus-cluster.milvusName" . }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    {{- with .Values.networkPolicy.ingress.from }}
+    - from:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        {{- toYaml $.Values.networkPolicy.ingress.ports | nindent 8 }}
+    {{- end }}
+    {{- with .Values.networkPolicy.ingress.prometheus.from }}
+    - from:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        - port: 9091
+          protocol: TCP
+    {{- end }}
+  egress:
+    {{- if .Values.networkPolicy.egress.dns.enabled }}
+    - to: []
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    {{- end }}
+    {{- with .Values.networkPolicy.egress.storage.to }}
+    - to:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        {{- toYaml $.Values.networkPolicy.egress.storage.ports | nindent 8 }}
+    {{- end }}
+    {{- with .Values.networkPolicy.egress.kafka.to }}
+    - to:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        {{- toYaml $.Values.networkPolicy.egress.kafka.ports | nindent 8 }}
+    {{- end }}
+    {{- with .Values.networkPolicy.egress.etcd.to }}
+    - to:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        {{- toYaml $.Values.networkPolicy.egress.etcd.ports | nindent 8 }}
+    {{- end }}
+    {{- with .Values.networkPolicy.egress.extra }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end -}}

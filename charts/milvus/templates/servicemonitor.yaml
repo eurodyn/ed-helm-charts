@@ -1,0 +1,49 @@
+{{- /*
+Optional Prometheus-Operator ServiceMonitor for the Milvus metrics endpoints.
+
+Milvus components expose Prometheus metrics on port 9091 at /metrics, and the
+Milvus Operator creates Services for them. The selector and port NAME can vary
+between Operator versions, so this template is DISABLED by default and its
+selector/port are fully configurable. VERIFY on your cluster first:
+
+  kubectl -n {{ .Release.Namespace }} get svc --show-labels
+  kubectl -n {{ .Release.Namespace }} get svc <svc> -o jsonpath='{.spec.ports}'
+
+If your Operator does not create a metrics Service with a stable label/port,
+prefer a PodMonitor or annotation-based scraping instead (see README "Monitoring").
+Requires the Prometheus Operator CRDs (monitoring.coreos.com/v1) to be installed.
+*/ -}}
+{{- if .Values.serviceMonitor.enabled -}}
+{{- $selector := .Values.serviceMonitor.selector | default (dict "matchLabels" dict) -}}
+{{- $matchLabels := $selector.matchLabels | default dict -}}
+{{- if not (get $matchLabels "app.kubernetes.io/instance") -}}
+{{- $matchLabels = merge (dict "app.kubernetes.io/instance" (include "milvus-cluster.milvusName" .)) $matchLabels -}}
+{{- end -}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "milvus-cluster.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "milvus-cluster.labels" . | nindent 4 }}
+    {{- with .Values.serviceMonitor.labels }}
+    {{- include "milvus-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 4 }}
+    {{- end }}
+  {{- with .Values.extraAnnotations }}
+  annotations:
+    {{- include "milvus-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- toYaml $matchLabels | nindent 6 }}
+  {{- with .Values.serviceMonitor.namespaceSelector }}
+  namespaceSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  endpoints:
+    - port: {{ .Values.serviceMonitor.portName | quote }}
+      path: {{ .Values.serviceMonitor.path | default "/metrics" }}
+      interval: {{ .Values.serviceMonitor.interval | default "30s" }}
+      scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout | default "10s" }}
+{{- end -}}

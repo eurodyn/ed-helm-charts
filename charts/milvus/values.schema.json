@@ -1,0 +1,364 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "milvus-cluster values",
+  "description": "Schema for the milvus-cluster Helm chart. Deploys a Milvus 2.6 cluster via the Milvus Operator, connecting only to EXTERNAL Kafka, etcd and Apache Ozone (S3).",
+  "type": "object",
+  "additionalProperties": false,
+  "definitions": {
+    "resourceQuantity": {
+      "type": "string",
+      "description": "A Kubernetes resource quantity, e.g. \"500m\", \"2\", \"4Gi\"."
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requests": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/resourceQuantity" }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/resourceQuantity" }
+        }
+      }
+    },
+    "secretName": {
+      "type": "string",
+      "description": "A Kubernetes Secret name (RFC 1123 subdomain), or a Helm template expression (containing '{{ }}') resolved at render time.",
+      "maxLength": 253,
+      "pattern": "^$|\\{\\{|^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"
+    },
+    "endpointList": {
+      "type": "array",
+      "description": "A non-empty list of host:port endpoints (no URL scheme).",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "properties": {
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "tag"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1, "description": "Milvus image repository." },
+        "tag": { "type": "string", "minLength": 1, "description": "Milvus image tag (2.6.x)." },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"],
+          "description": "Image pull policy."
+        },
+        "pullSecrets": {
+          "type": "array",
+          "description": "List of {name: <docker-registry secret>} references.",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": { "name": { "type": "string" } }
+          }
+        }
+      }
+    },
+
+    "milvus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "components"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "const": "cluster",
+          "description": "Must be \"cluster\". Standalone is not supported."
+        },
+        "authorization": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "description": "Enable Milvus RBAC/authentication." }
+          }
+        },
+        "logging": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": {
+              "type": "string",
+              "enum": ["trace", "debug", "info", "warn", "error", "panic", "fatal"]
+            },
+            "format": { "type": "string", "enum": ["json", "text"] }
+          }
+        },
+        "config": {
+          "type": "object",
+          "description": "Free-form Milvus runtime configuration passed through to spec.config. Arbitrary keys are permitted so future Milvus config is not blocked.",
+          "additionalProperties": true
+        },
+        "components": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["proxy", "mixCoord", "queryNode", "dataNode", "streamingNode"],
+          "properties": {
+            "global": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "podLabels": { "type": "object" },
+                "podAnnotations": { "type": "object" },
+                "nodeSelector": { "type": "object" },
+                "affinity": { "type": "object" },
+                "tolerations": { "type": "array" },
+                "topologySpreadConstraints": { "type": "array" },
+                "priorityClassName": { "type": "string" },
+                "securityContext": { "type": "object" },
+                "env": { "type": "array" },
+                "volumes": { "type": "array" },
+                "volumeMounts": { "type": "array" }
+              }
+            },
+            "proxy": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["replicas", "serviceType"],
+              "properties": {
+                "replicas": { "type": "integer", "minimum": 1, "description": "Proxy replicas (>=1)." },
+                "serviceType": {
+                  "type": "string",
+                  "enum": ["ClusterIP", "NodePort", "LoadBalancer"],
+                  "description": "Proxy Service type."
+                },
+                "resources": { "$ref": "#/definitions/resources" }
+              }
+            },
+            "mixCoord": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["replicas"],
+              "properties": {
+                "replicas": { "type": "integer", "minimum": 1, "description": "MixCoord replicas (>=2 when activeStandby)." },
+                "activeStandby": { "type": "boolean" },
+                "resources": { "$ref": "#/definitions/resources" }
+              }
+            },
+            "queryNode": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["replicas"],
+              "properties": {
+                "replicas": { "type": "integer", "minimum": 1 },
+                "resources": { "$ref": "#/definitions/resources" }
+              }
+            },
+            "dataNode": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["replicas"],
+              "properties": {
+                "replicas": { "type": "integer", "minimum": 1 },
+                "resources": { "$ref": "#/definitions/resources" }
+              }
+            },
+            "streamingNode": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["replicas"],
+              "properties": {
+                "replicas": { "type": "integer", "minimum": 1 },
+                "resources": { "$ref": "#/definitions/resources" }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "externalStorage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["endpoint", "bucketName", "rootPath", "credentials", "tls"],
+      "properties": {
+        "endpoint": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Ozone S3 Gateway host:port, WITHOUT a URL scheme (enforced by chart validation)."
+        },
+        "bucketName": { "type": "string", "minLength": 1 },
+        "rootPath": { "type": "string", "minLength": 1 },
+        "region": { "type": "string" },
+        "useSSL": { "type": "boolean" },
+        "cloudProvider": {
+          "type": "string",
+          "enum": ["aws"],
+          "description": "Fixed to aws for generic S3-compatible storage (Ozone)."
+        },
+        "useVirtualHost": { "type": "boolean", "description": "Ozone uses path-style; keep false." },
+        "existingSecret": { "$ref": "#/definitions/secretName" },
+        "credentials": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["create"],
+          "properties": {
+            "create": { "type": "boolean" },
+            "accessKey": { "type": "string" },
+            "secretKey": { "type": "string" }
+          },
+          "if": { "properties": { "create": { "const": true } } },
+          "then": {
+            "properties": {
+              "accessKey": { "type": "string", "minLength": 1 },
+              "secretKey": { "type": "string", "minLength": 1 }
+            },
+            "required": ["accessKey", "secretKey"]
+          }
+        },
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "existingSecret": { "$ref": "#/definitions/secretName" },
+            "caKey": { "type": "string" },
+            "insecureSkipVerify": {
+              "type": "boolean",
+              "const": false,
+              "description": "TLS verification bypass is not permitted; must be false."
+            },
+            "minVersion": { "type": "string", "enum": ["1.2", "1.3"] }
+          },
+          "if": { "properties": { "enabled": { "const": true } } },
+          "then": { "required": ["existingSecret"], "properties": { "existingSecret": { "type": "string", "minLength": 1 } } }
+        }
+      }
+    },
+
+    "externalKafka": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["brokerList", "securityProtocol", "credentials", "tls"],
+      "properties": {
+        "brokerList": { "$ref": "#/definitions/endpointList" },
+        "securityProtocol": {
+          "type": "string",
+          "enum": ["PLAINTEXT", "SSL", "SASL_PLAINTEXT", "SASL_SSL"]
+        },
+        "saslMechanisms": {
+          "type": "string",
+          "enum": ["PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"]
+        },
+        "existingSecret": { "$ref": "#/definitions/secretName" },
+        "usernameKey": { "type": "string" },
+        "passwordKey": { "type": "string" },
+        "credentials": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["create"],
+          "properties": {
+            "create": { "type": "boolean" },
+            "username": { "type": "string" },
+            "password": { "type": "string" }
+          }
+        },
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "existingSecret": { "$ref": "#/definitions/secretName" },
+            "caKey": { "type": "string" },
+            "certKey": { "type": "string" },
+            "keyKey": { "type": "string" },
+            "mutualTLS": { "type": "boolean" },
+            "insecureSkipVerify": { "type": "boolean", "const": false },
+            "minVersion": { "type": "string", "enum": ["1.2", "1.3"] }
+          }
+        }
+      }
+    },
+
+    "externalEtcd": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["endpoints", "rootPath", "authentication", "tls"],
+      "properties": {
+        "endpoints": { "$ref": "#/definitions/endpointList" },
+        "rootPath": {
+          "type": "string",
+          "minLength": 1,
+          "not": { "const": "by-dev" },
+          "description": "Unique metadata root path; must not be the unsafe default by-dev."
+        },
+        "existingSecret": { "$ref": "#/definitions/secretName" },
+        "usernameKey": { "type": "string" },
+        "passwordKey": { "type": "string" },
+        "authentication": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "createSecret": { "type": "boolean" },
+            "username": { "type": "string" },
+            "password": { "type": "string" }
+          }
+        },
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "existingSecret": { "$ref": "#/definitions/secretName" },
+            "caKey": { "type": "string" },
+            "certKey": { "type": "string" },
+            "keyKey": { "type": "string" },
+            "insecureSkipVerify": { "type": "boolean", "const": false },
+            "minVersion": { "type": "string", "enum": ["1.2", "1.3"] }
+          },
+          "if": { "properties": { "enabled": { "const": true } } },
+          "then": { "required": ["existingSecret"], "properties": { "existingSecret": { "type": "string", "minLength": 1 } } }
+        }
+      }
+    },
+
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" },
+        "annotations": { "type": "object" },
+        "labels": { "type": "object" }
+      }
+    },
+
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+
+    "serviceMonitor": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "interval": { "type": "string" },
+        "scrapeTimeout": { "type": "string" },
+        "labels": { "type": "object" },
+        "portName": { "type": "string" },
+        "path": { "type": "string" }
+      }
+    },
+
+    "strictCRDCheck": { "type": "boolean" },
+    "extraLabels": { "type": "object" },
+    "extraAnnotations": { "type": "object" }
+  }
+}

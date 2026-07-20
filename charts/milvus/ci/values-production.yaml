@@ -1,0 +1,87 @@
+# CI: production-shaped, schema-valid, offline-renderable values. No working
+# credentials — all Secret names are fake and must exist in a real cluster.
+image:
+  tag: v2.6.20
+  pullPolicy: IfNotPresent
+
+milvus:
+  authorization:
+    enabled: true
+  logging:
+    level: info
+    format: json
+  components:
+    global:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: milvus
+    proxy:
+      replicas: 2
+      serviceType: ClusterIP
+    mixCoord:
+      replicas: 2
+      activeStandby: true
+    queryNode:
+      replicas: 3
+    dataNode:
+      replicas: 2
+    streamingNode:
+      replicas: 2
+
+externalStorage:
+  endpoint: ozone-s3g.storage.svc.cluster.local:9879
+  bucketName: milvus-prod
+  rootPath: milvus/prod
+  region: us-east-1
+  useSSL: true
+  cloudProvider: aws
+  useVirtualHost: false
+  existingSecret: milvus-prod-storage
+  tls:
+    enabled: true
+    existingSecret: milvus-prod-storage-ca
+    caKey: ca.crt
+    minVersion: "1.2"
+
+externalKafka:
+  brokerList:
+    - kafka-0.kafka.svc.cluster.local:9093
+    - kafka-1.kafka.svc.cluster.local:9093
+    - kafka-2.kafka.svc.cluster.local:9093
+  securityProtocol: SASL_SSL
+  saslMechanisms: SCRAM-SHA-512
+  existingSecret: milvus-prod-kafka
+  usernameKey: username
+  passwordKey: password
+  tls:
+    enabled: true
+    existingSecret: milvus-prod-kafka-ca
+    caKey: ca.crt
+    mutualTLS: false
+    minVersion: "1.2"
+
+externalEtcd:
+  endpoints:
+    - etcd-0.etcd.svc.cluster.local:2379
+    - etcd-1.etcd.svc.cluster.local:2379
+    - etcd-2.etcd.svc.cluster.local:2379
+  rootPath: milvus-prod
+  existingSecret: milvus-prod-etcd
+  usernameKey: username
+  passwordKey: password
+  authentication:
+    enabled: true
+  tls:
+    enabled: true
+    existingSecret: milvus-prod-etcd-tls
+    caKey: ca.crt
+    certKey: tls.crt
+    keyKey: tls.key
+    minVersion: "1.2"
+
+serviceMonitor:
+  enabled: false

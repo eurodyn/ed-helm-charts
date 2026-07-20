@@ -1,0 +1,172 @@
+# =============================================================================
+# Production example.
+#   * >=2 replicas per component, explicit resources
+#   * Topology spreading across zones/nodes
+#   * TLS to Ozone, Kafka (SASL_SSL) and etcd (auth + TLS)
+#   * Credentials from EXISTING Secrets (inject via ESO/Vault/SOPS/Sealed Secrets)
+#   * NetworkPolicy enabled with PLACEHOLDER CIDRs — REPLACE before use
+#   * ServiceMonitor left disabled until selectors are verified on your cluster
+#
+#   helm upgrade --install milvus charts/milvus -n milvus --create-namespace \
+#     -f charts/milvus/examples/values-production.yaml
+# =============================================================================
+
+image:
+  repository: milvusdb/milvus
+  tag: v2.6.20
+  pullPolicy: IfNotPresent
+
+milvus:
+  authorization:
+    enabled: true
+  logging:
+    level: info
+    format: json
+  components:
+    global:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: milvus
+      securityContext:
+        runAsNonRoot: true        # verify your Milvus image supports non-root first
+        runAsUser: 1000
+        fsGroup: 1000
+    proxy:
+      replicas: 2
+      serviceType: ClusterIP
+      resources:
+        requests: { cpu: "1", memory: 2Gi }
+        limits: { cpu: "2", memory: 4Gi }
+    mixCoord:
+      replicas: 2
+      activeStandby: true
+      resources:
+        requests: { cpu: "1", memory: 2Gi }
+        limits: { cpu: "2", memory: 4Gi }
+    queryNode:
+      replicas: 3
+      resources:
+        requests: { cpu: "2", memory: 8Gi }
+        limits: { cpu: "8", memory: 32Gi }
+    dataNode:
+      replicas: 2
+      resources:
+        requests: { cpu: "2", memory: 4Gi }
+        limits: { cpu: "8", memory: 16Gi }
+    streamingNode:
+      replicas: 2
+      resources:
+        requests: { cpu: "2", memory: 4Gi }
+        limits: { cpu: "8", memory: 16Gi }
+
+externalStorage:
+  endpoint: ozone-s3g.storage.example.internal:9879
+  bucketName: milvus-production
+  rootPath: milvus/production
+  region: us-east-1
+  useSSL: true
+  cloudProvider: aws
+  useVirtualHost: false
+  existingSecret: milvus-ozone-credentials
+  tls:
+    enabled: true
+    existingSecret: milvus-ozone-ca
+    caKey: ca.crt
+    insecureSkipVerify: false
+    minVersion: "1.2"
+
+externalKafka:
+  brokerList:
+    - kafka-0.kafka.example.internal:9093
+    - kafka-1.kafka.example.internal:9093
+    - kafka-2.kafka.example.internal:9093
+  securityProtocol: SASL_SSL
+  saslMechanisms: SCRAM-SHA-512
+  existingSecret: milvus-kafka-credentials
+  usernameKey: username
+  passwordKey: password
+  tls:
+    enabled: true
+    existingSecret: milvus-kafka-ca
+    caKey: ca.crt
+    mutualTLS: false
+    insecureSkipVerify: false
+    minVersion: "1.2"
+
+externalEtcd:
+  endpoints:
+    - etcd-0.etcd.example.internal:2379
+    - etcd-1.etcd.example.internal:2379
+    - etcd-2.etcd.example.internal:2379
+  rootPath: milvus-production
+  existingSecret: milvus-etcd-credentials
+  usernameKey: username
+  passwordKey: password
+  authentication:
+    enabled: true
+  tls:
+    enabled: true
+    existingSecret: milvus-etcd-tls
+    caKey: ca.crt
+    certKey: tls.crt
+    keyKey: tls.key
+    insecureSkipVerify: false
+    minVersion: "1.2"
+
+serviceAccount:
+  create: true
+
+# NetworkPolicy — the CIDRs below are PLACEHOLDERS. Standard NetworkPolicy cannot
+# match external DNS names; replace every ipBlock.cidr with your real external
+# Kafka / etcd / Ozone network ranges (or use an FQDN-capable CNI).
+networkPolicy:
+  enabled: true
+  ingress:
+    from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: milvus-clients   # REPLACE
+    ports:
+      - port: 19530
+        protocol: TCP
+      - port: 9091
+        protocol: TCP
+    prometheus:
+      from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring      # REPLACE
+  egress:
+    dns:
+      enabled: true
+    storage:
+      to:
+        - ipBlock:
+            cidr: 10.0.10.0/24                              # REPLACE (Ozone S3G)
+      ports:
+        - port: 9879
+          protocol: TCP
+    kafka:
+      to:
+        - ipBlock:
+            cidr: 10.0.20.0/24                              # REPLACE (Kafka)
+      ports:
+        - port: 9093
+          protocol: TCP
+    etcd:
+      to:
+        - ipBlock:
+            cidr: 10.0.30.0/24                              # REPLACE (etcd)
+      ports:
+        - port: 2379
+          protocol: TCP
+
+# ServiceMonitor: verify the Operator's metrics Service labels/port first, then enable.
+serviceMonitor:
+  enabled: false
+  labels:
+    release: kube-prometheus-stack

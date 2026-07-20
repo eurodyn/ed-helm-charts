@@ -1,0 +1,56 @@
+milvus-cluster has been rendered for release "{{ .Release.Name }}".
+
+The Milvus Operator will now reconcile the Milvus custom resource into the
+actual Milvus workloads. This chart does NOT deploy Kafka, etcd, Apache Ozone,
+Ozone S3 Gateway, MinIO, Pulsar, BookKeeper, ZooKeeper or Woodpecker — all of
+those must already exist and be reachable from the Milvus pods.
+
+Milvus resource : {{ include "milvus-cluster.milvusName" . }}
+Namespace       : {{ .Release.Namespace }}
+Milvus image    : {{ .Values.image.repository }}:{{ .Values.image.tag }}
+Mode            : cluster (streaming architecture)
+
+Component replicas:
+  proxy         : {{ .Values.milvus.components.proxy.replicas }} (serviceType: {{ .Values.milvus.components.proxy.serviceType }})
+  mixCoord      : {{ .Values.milvus.components.mixCoord.replicas }} (activeStandby: {{ .Values.milvus.components.mixCoord.activeStandby }})
+  queryNode     : {{ .Values.milvus.components.queryNode.replicas }}
+  dataNode      : {{ .Values.milvus.components.dataNode.replicas }}
+  streamingNode : {{ .Values.milvus.components.streamingNode.replicas }}
+
+External dependencies (must already exist):
+  Kafka brokers : {{ len .Values.externalKafka.brokerList }} (securityProtocol: {{ .Values.externalKafka.securityProtocol }})
+  etcd endpoints: {{ len .Values.externalEtcd.endpoints }} (rootPath: {{ .Values.externalEtcd.rootPath }})
+  Ozone S3G     : {{ .Values.externalStorage.endpoint }}
+  Ozone bucket  : {{ .Values.externalStorage.bucketName }} (rootPath: {{ .Values.externalStorage.rootPath }})
+
+{{ if not (.Capabilities.APIVersions.Has "milvus.io/v1beta1/Milvus") -}}
+!! WARNING: the milvus.io/v1beta1 CRD was not detected in this cluster. The
+!! Milvus Operator does not appear to be installed, so this custom resource will
+!! not be reconciled. Install the Milvus Operator, then re-check. (Set
+!! strictCRDCheck=true to make this a hard failure.)
+{{ end -}}
+
+Inspect the deployment:
+
+  # Milvus custom resource status
+  kubectl get milvus {{ include "milvus-cluster.milvusName" . }} -n {{ .Release.Namespace }}
+  kubectl describe milvus {{ include "milvus-cluster.milvusName" . }} -n {{ .Release.Namespace }}
+
+  # Pods and services the Operator created
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ include "milvus-cluster.milvusName" . }}
+  kubectl get svc  -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ include "milvus-cluster.milvusName" . }}
+
+  # Recent events (Operator reconciliation, scheduling, pulls)
+  kubectl get events -n {{ .Release.Namespace }} --sort-by=.lastTimestamp
+
+Reach the Proxy from your workstation (Proxy is ClusterIP by default):
+
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "milvus-cluster.milvusName" . }}-milvus 19530:19530
+
+Reminders:
+  * All external dependencies (Kafka, etcd, Ozone S3 Gateway) must already exist.
+  * Credentials are stored in Kubernetes Secrets and injected into Milvus pods as
+    environment variables / mounted files — they are never printed here.
+  * Chart-created Secrets (if enabled) are stored in Helm release metadata; use an
+    external secret manager for production GitOps.
+  * Test your backup AND restore procedure before relying on this cluster.

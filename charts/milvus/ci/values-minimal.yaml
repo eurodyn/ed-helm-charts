@@ -1,0 +1,59 @@
+# CI: minimal, schema-valid, offline-renderable values. No working credentials.
+# Plaintext transport + no auth so no Kafka/etcd Secrets are needed; storage uses
+# an existing (fake) Secret. Used by `helm lint` / `helm template` in CI.
+image:
+  tag: v2.6.20
+
+milvus:
+  components:
+    proxy:
+      replicas: 1
+      resources:
+        requests: { cpu: "100m", memory: 256Mi }
+        limits: { cpu: "500m", memory: 512Mi }
+    mixCoord:
+      replicas: 1
+      activeStandby: false
+      resources:
+        requests: { cpu: "100m", memory: 256Mi }
+        limits: { cpu: "500m", memory: 512Mi }
+    queryNode:
+      replicas: 1
+      resources:
+        requests: { cpu: "100m", memory: 256Mi }
+        limits: { cpu: "500m", memory: 512Mi }
+    dataNode:
+      replicas: 1
+      resources:
+        requests: { cpu: "100m", memory: 256Mi }
+        limits: { cpu: "500m", memory: 512Mi }
+    streamingNode:
+      replicas: 1
+      resources:
+        requests: { cpu: "100m", memory: 256Mi }
+        limits: { cpu: "500m", memory: 512Mi }
+
+externalStorage:
+  endpoint: ozone-s3g.ci.svc.cluster.local:9878
+  bucketName: milvus-ci
+  rootPath: milvus/ci
+  useSSL: false
+  existingSecret: milvus-ci-storage
+  tls:
+    enabled: false
+
+externalKafka:
+  brokerList:
+    - kafka-ci-0.svc.cluster.local:9092
+  securityProtocol: PLAINTEXT
+  tls:
+    enabled: false
+
+externalEtcd:
+  endpoints:
+    - etcd-ci-0.svc.cluster.local:2379
+  rootPath: milvus-ci
+  authentication:
+    enabled: false
+  tls:
+    enabled: false

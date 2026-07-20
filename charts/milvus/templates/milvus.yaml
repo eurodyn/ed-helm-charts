@@ -1,0 +1,245 @@
+{{- /* Validate inputs first; fails the render with a clear message on bad input. */ -}}
+{{- include "milvus-cluster.validate" . -}}
+
+{{- /* =====================================================================
+       Derived flags
+       ===================================================================== */ -}}
+{{- $sp := .Values.externalKafka.securityProtocol -}}
+{{- $usesSasl := or (eq $sp "SASL_PLAINTEXT") (eq $sp "SASL_SSL") -}}
+{{- $usesKafkaTLS := or (eq $sp "SSL") (eq $sp "SASL_SSL") -}}
+{{- $kafkaTLS := and .Values.externalKafka.tls.enabled $usesKafkaTLS -}}
+{{- $storageTLS := and .Values.externalStorage.tls.enabled .Values.externalStorage.useSSL -}}
+{{- $etcdTLS := .Values.externalEtcd.tls.enabled -}}
+{{- $etcdAuth := .Values.externalEtcd.authentication.enabled -}}
+{{- $etcdClient := and $etcdTLS (ne (trim (default "" .Values.externalEtcd.tls.certKey)) "") (ne (trim (default "" .Values.externalEtcd.tls.keyKey)) "") -}}
+
+{{- $storageMount := include "milvus-cluster.storageTLSMountPath" . -}}
+{{- $kafkaMount := include "milvus-cluster.kafkaTLSMountPath" . -}}
+{{- $etcdMount := include "milvus-cluster.etcdTLSMountPath" . -}}
+
+{{- /* =====================================================================
+       Milvus spec.config  (base defaults -> user config -> enforced keys)
+       ===================================================================== */ -}}
+{{- $enforced := dict -}}
+{{- $_ := set $enforced "common" (dict "security" (dict "authorizationEnabled" .Values.milvus.authorization.enabled)) -}}
+{{- $_ := set $enforced "log" (dict "level" .Values.milvus.logging.level "format" (ternary "JSON" "text" (eq .Values.milvus.logging.format "json"))) -}}
+{{- if .Values.milvus.components.mixCoord.activeStandby -}}
+{{- $_ := set $enforced "mixCoord" (dict "enableActiveStandby" true) -}}
+{{- end -}}
+
+{{- /* etcd config (credentials injected via env, not written here) */ -}}
+{{- $etcdCfg := dict "rootPath" .Values.externalEtcd.rootPath -}}
+{{- if $etcdAuth -}}
+{{- $_ := set $etcdCfg "auth" (dict "enabled" true) -}}
+{{- end -}}
+{{- if $etcdTLS -}}
+{{- $etcdSsl := dict "enabled" true "tlsCACert" (printf "%s/ca.crt" $etcdMount) -}}
+{{- if $etcdClient -}}
+{{- $_ := set $etcdSsl "tlsCert" (printf "%s/tls.crt" $etcdMount) -}}
+{{- $_ := set $etcdSsl "tlsKey" (printf "%s/tls.key" $etcdMount) -}}
+{{- end -}}
+{{- if .Values.externalEtcd.tls.minVersion -}}
+{{- $_ := set $etcdSsl "tlsMinVersion" (.Values.externalEtcd.tls.minVersion | toString) -}}
+{{- end -}}
+{{- $_ := set $etcdCfg "ssl" $etcdSsl -}}
+{{- end -}}
+{{- $_ := set $enforced "etcd" $etcdCfg -}}
+
+{{- /* minio (S3/Ozone) config */ -}}
+{{- $minio := dict "bucketName" .Values.externalStorage.bucketName "rootPath" .Values.externalStorage.rootPath "useSSL" .Values.externalStorage.useSSL "cloudProvider" .Values.externalStorage.cloudProvider "useVirtualHost" .Values.externalStorage.useVirtualHost -}}
+{{- if .Values.externalStorage.region -}}
+{{- $_ := set $minio "region" .Values.externalStorage.region -}}
+{{- end -}}
+{{- if $storageTLS -}}
+{{- $minioSsl := dict "tlsCACert" (printf "%s/ca.crt" $storageMount) -}}
+{{- if .Values.externalStorage.tls.minVersion -}}
+{{- $_ := set $minioSsl "tlsMinVersion" (.Values.externalStorage.tls.minVersion | toString) -}}
+{{- end -}}
+{{- $_ := set $minio "ssl" $minioSsl -}}
+{{- end -}}
+{{- $_ := set $enforced "minio" $minio -}}
+
+{{- /* kafka config (SASL credentials injected via env, not written here) */ -}}
+{{- $kafkaCfg := dict "securityProtocol" $sp -}}
+{{- if $usesSasl -}}
+{{- $_ := set $kafkaCfg "saslMechanisms" .Values.externalKafka.saslMechanisms -}}
+{{- end -}}
+{{- if $kafkaTLS -}}
+{{- $kafkaSsl := dict "enabled" true "tlsCaCert" (printf "%s/ca.crt" $kafkaMount) -}}
+{{- if .Values.externalKafka.tls.mutualTLS -}}
+{{- $_ := set $kafkaSsl "tlsCert" (printf "%s/tls.crt" $kafkaMount) -}}
+{{- $_ := set $kafkaSsl "tlsKey" (printf "%s/tls.key" $kafkaMount) -}}
+{{- end -}}
+{{- $_ := set $kafkaCfg "ssl" $kafkaSsl -}}
+{{- end -}}
+{{- $_ := set $enforced "kafka" $kafkaCfg -}}
+
+{{- /* User pass-through config (rendered through tpl), then enforced keys win. */ -}}
+{{- $userConfig := dict -}}
+{{- if .Values.milvus.config -}}
+{{- $userConfig = fromYaml (include "milvus-cluster.tplvalues.render" (dict "value" .Values.milvus.config "context" $)) -}}
+{{- end -}}
+{{- $finalConfig := mergeOverwrite (deepCopy $userConfig) $enforced -}}
+
+{{- /* =====================================================================
+       Environment variables (Secret-backed credentials) + TLS volumes
+       ===================================================================== */ -}}
+{{- $env := .Values.milvus.components.global.env | default list -}}
+{{- if $usesSasl -}}
+{{- $ks := include "milvus-cluster.kafkaSecretName" . -}}
+{{- $env = append $env (dict "name" "KAFKA_SASLUSERNAME" "valueFrom" (dict "secretKeyRef" (dict "name" $ks "key" (.Values.externalKafka.usernameKey | default "username")))) -}}
+{{- $env = append $env (dict "name" "KAFKA_SASLPASSWORD" "valueFrom" (dict "secretKeyRef" (dict "name" $ks "key" (.Values.externalKafka.passwordKey | default "password")))) -}}
+{{- end -}}
+{{- if $etcdAuth -}}
+{{- $es := include "milvus-cluster.etcdSecretName" . -}}
+{{- $env = append $env (dict "name" "ETCD_AUTH_USERNAME" "valueFrom" (dict "secretKeyRef" (dict "name" $es "key" (.Values.externalEtcd.usernameKey | default "username")))) -}}
+{{- $env = append $env (dict "name" "ETCD_AUTH_PASSWORD" "valueFrom" (dict "secretKeyRef" (dict "name" $es "key" (.Values.externalEtcd.passwordKey | default "password")))) -}}
+{{- end -}}
+
+{{- $volumes := .Values.milvus.components.global.volumes | default list -}}
+{{- $mounts := .Values.milvus.components.global.volumeMounts | default list -}}
+{{- if $storageTLS -}}
+{{- $items := list (dict "key" (.Values.externalStorage.tls.caKey | default "ca.crt") "path" "ca.crt") -}}
+{{- $volumes = append $volumes (dict "name" "milvus-storage-ca" "secret" (dict "secretName" (include "milvus-cluster.storageTLSSecretName" .) "items" $items)) -}}
+{{- $mounts = append $mounts (dict "name" "milvus-storage-ca" "mountPath" $storageMount "readOnly" true) -}}
+{{- end -}}
+{{- if $kafkaTLS -}}
+{{- $items := list (dict "key" (.Values.externalKafka.tls.caKey | default "ca.crt") "path" "ca.crt") -}}
+{{- if .Values.externalKafka.tls.mutualTLS -}}
+{{- $items = append $items (dict "key" (.Values.externalKafka.tls.certKey | default "tls.crt") "path" "tls.crt") -}}
+{{- $items = append $items (dict "key" (.Values.externalKafka.tls.keyKey | default "tls.key") "path" "tls.key") -}}
+{{- end -}}
+{{- $volumes = append $volumes (dict "name" "milvus-kafka-tls" "secret" (dict "secretName" (include "milvus-cluster.kafkaTLSSecretName" .) "items" $items)) -}}
+{{- $mounts = append $mounts (dict "name" "milvus-kafka-tls" "mountPath" $kafkaMount "readOnly" true) -}}
+{{- end -}}
+{{- if $etcdTLS -}}
+{{- $items := list (dict "key" (.Values.externalEtcd.tls.caKey | default "ca.crt") "path" "ca.crt") -}}
+{{- if $etcdClient -}}
+{{- $items = append $items (dict "key" (.Values.externalEtcd.tls.certKey | default "tls.crt") "path" "tls.crt") -}}
+{{- $items = append $items (dict "key" (.Values.externalEtcd.tls.keyKey | default "tls.key") "path" "tls.key") -}}
+{{- end -}}
+{{- $volumes = append $volumes (dict "name" "milvus-etcd-tls" "secret" (dict "secretName" (include "milvus-cluster.etcdTLSSecretName" .) "items" $items)) -}}
+{{- $mounts = append $mounts (dict "name" "milvus-etcd-tls" "mountPath" $etcdMount "readOnly" true) -}}
+{{- end -}}
+
+{{- $g := .Values.milvus.components.global -}}
+{{- /* =====================================================================
+       Milvus custom resource
+       ===================================================================== */ -}}
+apiVersion: milvus.io/v1beta1
+kind: Milvus
+metadata:
+  name: {{ include "milvus-cluster.milvusName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "milvus-cluster.labels" . | nindent 4 }}
+    app.kubernetes.io/component: milvus
+  {{- $ann := include "milvus-cluster.annotations" . }}
+  {{- if trim $ann }}
+  annotations:
+    {{- include "milvus-cluster.annotations" . | nindent 4 }}
+  {{- end }}
+spec:
+  mode: cluster
+  components:
+    image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+    imagePullPolicy: {{ .Values.image.pullPolicy }}
+    {{- with .Values.image.pullSecrets }}
+    imagePullSecrets:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    streamingMode: true
+    {{- if or .Values.serviceAccount.create (ne (trim (default "" .Values.serviceAccount.name)) "") }}
+    serviceAccountName: {{ include "milvus-cluster.serviceAccountName" . }}
+    {{- end }}
+    {{- with $g.podLabels }}
+    podLabels:
+      {{- include "milvus-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 6 }}
+    {{- end }}
+    {{- with $g.podAnnotations }}
+    podAnnotations:
+      {{- include "milvus-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 6 }}
+    {{- end }}
+    {{- with $g.nodeSelector }}
+    nodeSelector:
+      {{- include "milvus-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 6 }}
+    {{- end }}
+    {{- with $g.affinity }}
+    affinity:
+      {{- include "milvus-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 6 }}
+    {{- end }}
+    {{- with $g.tolerations }}
+    tolerations:
+      {{- include "milvus-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 6 }}
+    {{- end }}
+    {{- with $g.topologySpreadConstraints }}
+    topologySpreadConstraints:
+      {{- include "milvus-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 6 }}
+    {{- end }}
+    {{- with $g.priorityClassName }}
+    priorityClassName: {{ . }}
+    {{- end }}
+    {{- with $g.securityContext }}
+    securityContext:
+      {{- include "milvus-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 6 }}
+    {{- end }}
+    {{- if $env }}
+    env:
+      {{- toYaml $env | nindent 6 }}
+    {{- end }}
+    {{- if $volumes }}
+    volumes:
+      {{- toYaml $volumes | nindent 6 }}
+    {{- end }}
+    {{- if $mounts }}
+    volumeMounts:
+      {{- toYaml $mounts | nindent 6 }}
+    {{- end }}
+    proxy:
+      replicas: {{ int .Values.milvus.components.proxy.replicas }}
+      serviceType: {{ .Values.milvus.components.proxy.serviceType }}
+      {{- with .Values.milvus.components.proxy.resources }}
+      resources:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    mixCoord:
+      replicas: {{ int .Values.milvus.components.mixCoord.replicas }}
+      {{- with .Values.milvus.components.mixCoord.resources }}
+      resources:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    queryNode:
+      replicas: {{ int .Values.milvus.components.queryNode.replicas }}
+      {{- with .Values.milvus.components.queryNode.resources }}
+      resources:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    dataNode:
+      replicas: {{ int .Values.milvus.components.dataNode.replicas }}
+      {{- with .Values.milvus.components.dataNode.resources }}
+      resources:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    streamingNode:
+      replicas: {{ int .Values.milvus.components.streamingNode.replicas }}
+      {{- with .Values.milvus.components.streamingNode.resources }}
+      resources:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  config:
+    {{- toYaml $finalConfig | nindent 4 }}
+  dependencies:
+    msgStreamType: kafka
+    etcd:
+      external: true
+      endpoints:
+        {{- toYaml .Values.externalEtcd.endpoints | nindent 8 }}
+    kafka:
+      external: true
+      brokerList:
+        {{- toYaml .Values.externalKafka.brokerList | nindent 8 }}
+    storage:
+      external: true
+      type: S3
+      endpoint: {{ .Values.externalStorage.endpoint | quote }}
+      secretRef: {{ include "milvus-cluster.storageSecretName" . | quote }}

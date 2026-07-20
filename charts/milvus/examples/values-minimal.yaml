@@ -1,0 +1,53 @@
+# =============================================================================
+# Minimal example — the smallest valid configuration.
+# All external dependencies must already exist. Credentials come from existing
+# Kubernetes Secrets; nothing sensitive is inlined here.
+#
+#   helm upgrade --install milvus charts/milvus -n milvus --create-namespace \
+#     -f charts/milvus/examples/values-minimal.yaml
+# =============================================================================
+
+image:
+  tag: v2.6.20
+
+milvus:
+  components:
+    proxy:
+      replicas: 1
+    mixCoord:
+      replicas: 1
+      activeStandby: false        # single replica -> no active/standby
+    queryNode:
+      replicas: 1
+    dataNode:
+      replicas: 1
+    streamingNode:
+      replicas: 1
+
+# --- External Apache Ozone (S3 Gateway) ---
+externalStorage:
+  endpoint: ozone-s3g.storage.svc.cluster.local:9878   # host:port, NO scheme
+  bucketName: milvus
+  rootPath: milvus/minimal
+  useSSL: false
+  existingSecret: milvus-ozone-credentials   # must contain accesskey / secretkey
+  tls:
+    enabled: false
+
+# --- External Kafka (PLAINTEXT for a minimal/dev setup) ---
+externalKafka:
+  brokerList:
+    - kafka.messaging.svc.cluster.local:9092
+  securityProtocol: PLAINTEXT
+  tls:
+    enabled: false
+
+# --- External etcd (no auth for a minimal/dev setup) ---
+externalEtcd:
+  endpoints:
+    - etcd.metadata.svc.cluster.local:2379
+  rootPath: milvus-minimal      # choose a UNIQUE, permanent value before install
+  authentication:
+    enabled: false
+  tls:
+    enabled: false
