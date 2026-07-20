@@ -54,6 +54,45 @@ entries:
       milvus.io/requires-operator: "true"
     apiVersion: v2
     appVersion: v2.6.20
+    created: "2026-07-20T13:45:56.82304222Z"
+    description: Production-grade Helm chart that deploys a Milvus 2.6 cluster through
+      the Milvus Operator by creating a milvus.io/v1beta1 Milvus custom resource.
+      This chart connects Milvus exclusively to pre-existing EXTERNAL Kafka, etcd
+      and Apache Ozone (S3 Gateway) dependencies. It never installs, manages or deletes
+      those external systems.
+    digest: 4de73de9e2c4760a60b5df6a95b1cc57d9aab15f42c5a07a513b3ea545cbe5d0
+    home: https://milvus.io
+    icon: https://raw.githubusercontent.com/eurodyn/ed-helm-charts/main/logo_ed.png
+    keywords:
+    - milvus
+    - milvus-operator
+    - vector-database
+    - milvus-cluster
+    - kafka
+    - etcd
+    - s3
+    - apache-ozone
+    - streaming
+    kubeVersion: '>=1.24.0-0'
+    maintainers:
+    - email: info@eurodyn.com
+      name: European Dynamics SA
+      url: https://www.eurodyn.com
+    name: milvus-cluster
+    sources:
+    - https://github.com/milvus-io/milvus
+    - https://github.com/zilliztech/milvus-operator
+    type: application
+    urls:
+    - https://github.com/eurodyn/ed-helm-charts/releases/download/milvus-cluster-0.1.1/milvus-cluster-0.1.1.tgz
+    version: 0.1.1
+  - annotations:
+      category: Database
+      licenses: Apache-2.0
+      milvus.io/operator-min-version: 1.3.7
+      milvus.io/requires-operator: "true"
+    apiVersion: v2
+    appVersion: v2.6.20
     created: "2026-07-20T13:20:20.21018901Z"
     description: Production-grade Helm chart that deploys a Milvus 2.6 cluster through
       the Milvus Operator by creating a milvus.io/v1beta1 Milvus custom resource.
@@ -86,4 +125,4 @@ entries:
     urls:
     - https://github.com/eurodyn/ed-helm-charts/releases/download/milvus-cluster-0.1.0/milvus-cluster-0.1.0.tgz
     version: 0.1.0
-generated: "2026-07-20T13:20:20.210208977Z"
+generated: "2026-07-20T13:45:56.823055736Z"
