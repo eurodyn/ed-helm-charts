@@ -3,6 +3,21 @@ entries:
   etcd:
   - apiVersion: v2
     appVersion: v3.7.0
+    created: "2026-07-20T08:11:48.831225537Z"
+    description: A Helm chart for ETCD
+    digest: 02283d2d5b43cad052ddbe06647962043eaf77c485afdafa7aab07f2d2b31a50
+    icon: https://raw.githubusercontent.com/eurodyn/ed-helm-charts/main/logo_ed.png
+    maintainers:
+    - email: info@eurodyn.com
+      name: European Dynamics SA
+      url: https://www.eurodyn.com
+    name: etcd
+    type: application
+    urls:
+    - https://github.com/eurodyn/ed-helm-charts/releases/download/etcd-0.1.1/etcd-0.1.1.tgz
+    version: 0.1.1
+  - apiVersion: v2
+    appVersion: v3.7.0
     created: "2026-07-17T14:24:49.354352391Z"
     description: A Helm chart for ETCD
     digest: 26ddf7a348292fc492695ea4c7ed8a2e82b3122433af68234fff4b6fe449c50b
@@ -16,4 +31,4 @@ entries:
     urls:
     - https://github.com/eurodyn/ed-helm-charts/releases/download/etcd-0.1.0/etcd-0.1.0.tgz
     version: 0.1.0
-generated: "2026-07-17T14:24:49.354361739Z"
+generated: "2026-07-20T08:11:48.831233862Z"
