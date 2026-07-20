@@ -40,6 +40,12 @@
     "nameOverride": { "type": "string" },
     "fullnameOverride": { "type": "string" },
 
+    "global": {
+      "type": "object",
+      "description": "Helm auto-injects the parent chart's global values into every subchart; allow arbitrary content here so that doesn't fail schema validation.",
+      "additionalProperties": true
+    },
+
     "image": {
       "type": "object",
       "additionalProperties": false,

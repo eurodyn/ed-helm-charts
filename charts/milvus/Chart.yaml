@@ -9,7 +9,7 @@ description: >-
 type: application
 
 # Chart version. Bump on every change to chart templates/values.
-version: 0.1.0
+version: 0.1.1
 
 # The Milvus server image version this chart targets and was validated against.
 # See values.yaml image.tag and README "Supported Milvus version".
