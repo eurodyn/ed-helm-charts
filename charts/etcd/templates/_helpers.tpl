@@ -211,8 +211,10 @@ group: cert-manager.io
 
 {{/*
 DNS SANs shared by the client and peer certificates: the headless service in its
-short/namespaced/FQDN forms, plus a wildcard that covers every pod's stable
-per-ordinal name (<fullname>-<ordinal>.<headless-service>.<namespace>.svc.<clusterDomain>).
+short/namespaced/FQDN forms, plus wildcards that cover every pod's stable
+per-ordinal name both as the short form used for peer/advertise URLs
+(<fullname>-<ordinal>.<headless-service>) and as the FQDN
+(<fullname>-<ordinal>.<headless-service>.<namespace>.svc.<clusterDomain>).
 */}}
 {{- define "helm.tlsDnsNames" -}}
 {{- $fullname := include "helm.fullname" . -}}
@@ -223,6 +225,7 @@ per-ordinal name (<fullname>-<ordinal>.<headless-service>.<namespace>.svc.<clust
 - {{ $svc }}
 - {{ $svc }}.{{ $ns }}
 - {{ $svc }}.{{ $ns }}.svc.{{ $domain }}
+- "*.{{ $svc }}"
 - "*.{{ $svc }}.{{ $ns }}.svc.{{ $domain }}"
 - localhost
 {{- end }}
