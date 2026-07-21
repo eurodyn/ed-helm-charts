@@ -22,7 +22,10 @@
        ===================================================================== */ -}}
 {{- $enforced := dict -}}
 {{- $_ := set $enforced "common" (dict "security" (dict "authorizationEnabled" .Values.milvus.authorization.enabled)) -}}
-{{- $_ := set $enforced "log" (dict "level" .Values.milvus.logging.level "format" (ternary "JSON" "text" (eq .Values.milvus.logging.format "json"))) -}}
+{{- /* Milvus accepts only lowercase log formats ("json"/"text"); uppercase panics the
+       components at startup with "unsupport log format". The values schema already
+       constrains logging.format to that enum, so pass it through verbatim. */ -}}
+{{- $_ := set $enforced "log" (dict "level" .Values.milvus.logging.level "format" .Values.milvus.logging.format) -}}
 {{- if .Values.milvus.components.mixCoord.activeStandby -}}
 {{- $_ := set $enforced "mixCoord" (dict "enableActiveStandby" true) -}}
 {{- end -}}
@@ -59,10 +62,21 @@
 {{- end -}}
 {{- $_ := set $enforced "minio" $minio -}}
 
-{{- /* kafka config (SASL credentials injected via env, not written here) */ -}}
+{{- /* kafka config. SASL credentials for the Milvus *pods* are injected via env (see
+       below); they are additionally inlined here ONLY when provided as literal values,
+       because the Milvus Operator's dependency health-check reads credentials solely from
+       the CR (spec.config.kafka) and never sees the pod env vars. Inlining requires the
+       creds to exist at render time, so it works with credentials.username/password but
+       not with an opaque existingSecret. */ -}}
 {{- $kafkaCfg := dict "securityProtocol" $sp -}}
 {{- if $usesSasl -}}
 {{- $_ := set $kafkaCfg "saslMechanisms" .Values.externalKafka.saslMechanisms -}}
+{{- $saslUser := trim (include "milvus-cluster.tplvalues.render" (dict "value" (.Values.externalKafka.credentials.username | default "") "context" $)) -}}
+{{- $saslPass := trim (include "milvus-cluster.tplvalues.render" (dict "value" (.Values.externalKafka.credentials.password | default "") "context" $)) -}}
+{{- if and (ne $saslUser "") (ne $saslPass "") -}}
+{{- $_ := set $kafkaCfg "saslUsername" $saslUser -}}
+{{- $_ := set $kafkaCfg "saslPassword" $saslPass -}}
+{{- end -}}
 {{- end -}}
 {{- if $kafkaTLS -}}
 {{- $kafkaSsl := dict "enabled" true "tlsCaCert" (printf "%s/ca.crt" $kafkaMount) -}}
