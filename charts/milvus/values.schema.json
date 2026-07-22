@@ -197,8 +197,8 @@
         "useSSL": { "type": "boolean" },
         "cloudProvider": {
           "type": "string",
-          "enum": ["aws"],
-          "description": "Fixed to aws for generic S3-compatible storage (Ozone)."
+          "enum": ["aws", "minio"],
+          "description": "Cloud provider hint for the Milvus S3 client. Use \"aws\" for generic S3-compatible storage (Ozone) or \"minio\" for MinIO."
         },
         "useVirtualHost": { "type": "boolean", "description": "Ozone uses path-style; keep false." },
         "existingSecret": { "$ref": "#/definitions/secretName" },
