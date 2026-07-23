@@ -1,0 +1,69 @@
+apiVersion: v2
+name: kafka-cluster
+description: >-
+  Umbrella Helm chart that stands up a complete, production-oriented Apache Kafka
+  platform on Strimzi. It (optionally) installs the Strimzi Cluster Operator and
+  its CRDs as a subchart, then creates a KRaft (ZooKeeper-less) Kafka cluster with
+  SEPARATE Broker and Controller KafkaNodePools, plus KafkaTopics, KafkaUsers and
+  per-user ACLs — all driven from values so the same chart can be reused verbatim
+  across multiple projects.
+type: application
+
+# Chart version. Bump on every change to chart templates/values.
+version: 0.1.0
+
+# The Strimzi operator version this chart targets and was validated against.
+# Matches the strimzi-kafka-operator dependency below and drives the default
+# Kafka broker image version (cluster.version). Strimzi 1.x is KRaft-only.
+appVersion: "1.1.0"
+
+# Strimzi 1.1.0 requires a recent Kubernetes. The subchart enforces its own
+# (stricter) floor; this is the umbrella's lenient minimum.
+kubeVersion: ">=1.25.0-0"
+
+icon: https://raw.githubusercontent.com/eurodyn/ed-helm-charts/main/logo_ed.png
+
+keywords:
+  - kafka
+  - strimzi
+  - strimzi-operator
+  - kraft
+  - kafka-nodepools
+  - streaming
+  - event-streaming
+  - messaging
+
+home: https://strimzi.io
+sources:
+  - https://github.com/strimzi/strimzi-kafka-operator
+  - https://strimzi.io/docs/operators/latest/overview
+
+maintainers:
+  - name: European Dynamics SA
+    url: https://www.eurodyn.com
+    email: info@eurodyn.com
+
+annotations:
+  category: Streaming
+  licenses: Apache-2.0
+
+# -----------------------------------------------------------------------------
+# The Strimzi Cluster Operator (+ its CRDs) is bundled as a conditional subchart.
+#   * operator.enabled=true  (default) -> this release installs the operator.
+#       Because the Strimzi chart ships its CRDs in a `crds/` directory, Helm
+#       installs those CRDs FIRST (refreshing API discovery) before rendering the
+#       Kafka/KafkaNodePool/KafkaTopic/KafkaUser resources in this chart, so a
+#       single `helm install` works end to end.
+#   * operator.enabled=false -> the operator is expected to already exist
+#       (e.g. one shared, cluster-scoped operator for many projects). See
+#       examples/values-shared-operator.yaml.
+#
+# NOTE: Helm only installs CRDs from a subchart's crds/ dir on FIRST install and
+# never upgrades them. Upgrading the Strimzi CRDs later is a manual step — see README.
+# -----------------------------------------------------------------------------
+dependencies:
+  - name: strimzi-kafka-operator
+    version: "1.1.0"
+    repository: "https://strimzi.io/charts/"
+    condition: operator.enabled
+    alias: operator

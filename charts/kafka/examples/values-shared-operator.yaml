@@ -1,0 +1,47 @@
+# =============================================================================
+# Example: MULTI-PROJECT usage with ONE shared, cluster-scoped Strimzi operator.
+#
+# Install the operator ONCE (its own release), watching all namespaces:
+#   helm install strimzi charts/kafka -n strimzi-system --create-namespace \
+#     --set operator.enabled=true --set operator.watchAnyNamespace=true \
+#     --set nodePools.controller.replicas=0 ...   # (or a values file with no CRs)
+#
+# Then every PROJECT installs its OWN cluster WITHOUT another operator:
+#   helm install project-a charts/kafka -n project-a --create-namespace \
+#     -f charts/kafka/examples/values-shared-operator.yaml
+#
+# The chart-managed CRs (Kafka/NodePools/Topics/Users) land in the project
+# namespace and are reconciled by the shared operator. Because no operator/CRDs
+# are installed by this release, set strictCRDCheck=true so the install fails
+# fast if the shared operator/CRDs are missing.
+# =============================================================================
+operator:
+  enabled: false          # DO NOT install a second operator
+
+strictCRDCheck: true      # fail fast if the shared operator's CRDs are absent
+
+cluster:
+  name: project-a-kafka
+  # Project-specific overrides go here (listeners, config, resources, ...).
+
+topics:
+  - name: project-a-events
+    partitions: 6
+    replicas: 3
+    config:
+      min.insync.replicas: 2
+      retention.ms: 604800000
+
+users:
+  - name: project-a-app
+    authentication:
+      type: scram-sha-512
+    authorization:
+      type: simple
+      acls:
+        - resource: { type: topic, name: project-a-events, patternType: literal }
+          operations: [Read, Write, Describe]
+          host: "*"
+        - resource: { type: group, name: project-a-, patternType: prefix }
+          operations: [Read]
+          host: "*"

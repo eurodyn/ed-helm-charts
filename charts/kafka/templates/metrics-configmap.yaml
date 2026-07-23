@@ -1,0 +1,16 @@
+{{- /* JMX Prometheus Exporter rules for the Kafka brokers/controllers.
+       Referenced by Kafka.spec.kafka.metricsConfig (see kafka.yaml). */ -}}
+{{- if .Values.cluster.metrics.enabled }}
+{{- $rules := .Values.cluster.metrics.rules | default (include "kafka-cluster.defaultMetricsRules" .) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kafka-cluster.metricsConfigMapName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kafka-cluster.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
+data:
+  kafka-metrics-config.yml: |
+    {{- $rules | nindent 4 }}
+{{- end }}

@@ -1,0 +1,52 @@
+# CI: minimal single-node render (operator not installed here to keep it light).
+operator:
+  enabled: false
+strictCRDCheck: false
+cluster:
+  name: kafka-min
+  metrics:
+    enabled: true
+nodePools:
+  controller:
+    replicas: 1
+    storage:
+      type: persistent-claim
+      size: 10Gi
+      deleteClaim: true
+    resources:
+      requests: { memory: 1Gi, cpu: 250m }
+      limits: { memory: 1Gi, cpu: "1" }
+    jvmOptions:
+      -Xms: 512m
+      -Xmx: 512m
+    template: {}
+  broker:
+    replicas: 1
+    storage:
+      type: jbod
+      volumes:
+        - id: 0
+          type: persistent-claim
+          size: 20Gi
+          deleteClaim: true
+    resources:
+      requests: { memory: 2Gi, cpu: 500m }
+      limits: { memory: 2Gi, cpu: "2" }
+    jvmOptions:
+      -Xms: 1024m
+      -Xmx: 1024m
+    template: {}
+topics:
+  - name: demo
+    partitions: 1
+    replicas: 1
+users:
+  - name: demo-user
+    authentication:
+      type: scram-sha-512
+    authorization:
+      type: simple
+      acls:
+        - resource: { type: topic, name: demo, patternType: literal }
+          operations: [Read, Write, Describe]
+          host: "*"

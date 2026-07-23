@@ -1,0 +1,28 @@
+{{- /* Dedicated BROKER KafkaNodePool — data plane, JBOD storage (role: broker). */ -}}
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaNodePool
+metadata:
+  name: {{ .Values.nodePools.broker.name | default "broker" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    strimzi.io/cluster: {{ include "kafka-cluster.clusterName" . }}
+    {{- include "kafka-cluster.labels" . | nindent 4 }}
+    app.kubernetes.io/component: broker
+spec:
+  replicas: {{ int .Values.nodePools.broker.replicas }}
+  roles:
+    - broker
+  storage:
+    {{- include "kafka-cluster.tplvalues.render" (dict "value" .Values.nodePools.broker.storage "context" $) | nindent 4 }}
+  {{- with .Values.nodePools.broker.resources }}
+  resources:
+    {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 4 }}
+  {{- end }}
+  {{- with .Values.nodePools.broker.jvmOptions }}
+  jvmOptions:
+    {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 4 }}
+  {{- end }}
+  {{- with .Values.nodePools.broker.template }}
+  template:
+    {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 4 }}
+  {{- end }}

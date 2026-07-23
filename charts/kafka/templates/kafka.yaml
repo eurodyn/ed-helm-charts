@@ -1,0 +1,61 @@
+{{- /* Validate inputs first; fails the render with a clear message on bad input. */ -}}
+{{- include "kafka-cluster.validate" . -}}
+{{- /* =====================================================================
+       Kafka cluster (KRaft). replicas + storage are delegated to the
+       KafkaNodePool resources (nodepool-controller.yaml / nodepool-broker.yaml).
+       ===================================================================== */ -}}
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: {{ include "kafka-cluster.clusterName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    strimzi.io/cluster: {{ include "kafka-cluster.clusterName" . }}
+    {{- include "kafka-cluster.labels" . | nindent 4 }}
+  {{- if or .Values.cluster.nodePoolsAnnotation .Values.extraAnnotations }}
+  annotations:
+    {{- if .Values.cluster.nodePoolsAnnotation }}
+    strimzi.io/node-pools: enabled
+    {{- end }}
+    {{- with .Values.extraAnnotations }}
+    {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 4 }}
+    {{- end }}
+  {{- end }}
+spec:
+  kafka:
+    {{- with .Values.cluster.version }}
+    version: {{ . | quote }}
+    {{- end }}
+    {{- with .Values.cluster.metadataVersion }}
+    metadataVersion: {{ . | quote }}
+    {{- end }}
+    listeners:
+      {{- include "kafka-cluster.tplvalues.render" (dict "value" .Values.cluster.listeners "context" $) | nindent 6 }}
+    {{- with .Values.cluster.authorization }}
+    authorization:
+      {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 6 }}
+    {{- end }}
+    {{- with .Values.cluster.config }}
+    config:
+      {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 6 }}
+    {{- end }}
+    {{- if .Values.cluster.metrics.enabled }}
+    metricsConfig:
+      type: jmxPrometheusExporter
+      valueFrom:
+        configMapKeyRef:
+          name: {{ include "kafka-cluster.metricsConfigMapName" . }}
+          key: kafka-metrics-config.yml
+    {{- end }}
+    {{- with .Values.cluster.kafkaTemplate }}
+    template:
+      {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 6 }}
+    {{- end }}
+  {{- with .Values.cluster.entityOperator }}
+  entityOperator:
+    {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 4 }}
+  {{- end }}
+  {{- with .Values.cluster.kafkaExporter }}
+  kafkaExporter:
+    {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 4 }}
+  {{- end }}

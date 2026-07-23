@@ -1,0 +1,10 @@
+# CI: full render including the Strimzi operator subchart, using chart defaults
+# (3 controllers + 3 JBOD brokers, 2 topics, 2 users) plus a couple of overrides.
+operator:
+  enabled: true
+  watchAnyNamespace: false
+strictCRDCheck: false
+cluster:
+  name: kafka-prod
+  version: "4.3.0"
+  metadataVersion: "4.3-IV0"

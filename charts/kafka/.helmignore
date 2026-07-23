@@ -1,0 +1,12 @@
+# Patterns to ignore when packaging the chart.
+.DS_Store
+.git/
+.gitignore
+.idea/
+*.tmproj
+*.bak
+*.orig
+*~
+# Dev-only overrides and local notes.
+values.local.yaml
+TODO.md

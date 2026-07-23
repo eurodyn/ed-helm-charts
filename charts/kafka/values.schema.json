@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "kafka-cluster values",
+  "description": "Values for the kafka-cluster umbrella chart. Nested Strimzi blocks are pass-through and intentionally permissive (additionalProperties allowed).",
+  "type": "object",
+  "properties": {
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+    "extraLabels": { "type": "object" },
+    "extraAnnotations": { "type": "object" },
+    "strictCRDCheck": { "type": "boolean" },
+
+    "operator": {
+      "type": "object",
+      "description": "Passed to the strimzi-kafka-operator subchart; 'enabled' also gates its installation.",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "watchAnyNamespace": { "type": "boolean" },
+        "watchNamespaces": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["enabled"]
+    },
+
+    "cluster": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" },
+        "metadataVersion": { "type": "string" },
+        "nodePoolsAnnotation": { "type": "boolean" },
+        "listeners": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "port": { "type": "integer", "minimum": 9092 },
+              "type": { "type": "string" },
+              "tls": { "type": "boolean" }
+            },
+            "required": ["name", "port", "type"]
+          }
+        },
+        "authorization": { "type": "object" },
+        "config": { "type": "object" },
+        "entityOperator": { "type": "object" },
+        "kafkaExporter": { "type": "object" },
+        "kafkaTemplate": { "type": "object" },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "rules": { "type": "string" }
+          }
+        }
+      }
+    },
+
+    "nodePools": {
+      "type": "object",
+      "properties": {
+        "controller": { "$ref": "#/definitions/nodePool" },
+        "broker": { "$ref": "#/definitions/nodePool" }
+      },
+      "required": ["controller", "broker"]
+    },
+
+    "topics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "topicName": { "type": "string" },
+          "partitions": { "type": "integer", "minimum": 1 },
+          "replicas": { "type": "integer", "minimum": 1 },
+          "config": { "type": "object" }
+        },
+        "required": ["name", "partitions", "replicas"]
+      }
+    },
+
+    "users": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "authentication": {
+            "type": "object",
+            "properties": { "type": { "type": "string" } },
+            "required": ["type"]
+          },
+          "authorization": { "type": "object" },
+          "quotas": { "type": "object" },
+          "template": { "type": "object" }
+        },
+        "required": ["name", "authentication"]
+      }
+    }
+  },
+  "required": ["operator", "cluster", "nodePools"],
+  "definitions": {
+    "nodePool": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "replicas": { "type": "integer", "minimum": 1 },
+        "storage": { "type": "object" },
+        "resources": { "type": "object" },
+        "jvmOptions": { "type": "object" },
+        "template": { "type": "object" }
+      },
+      "required": ["replicas", "storage"]
+    }
+  }
+}

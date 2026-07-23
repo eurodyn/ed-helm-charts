@@ -1,0 +1,28 @@
+{{- /* Dedicated CONTROLLER KafkaNodePool — KRaft metadata quorum (role: controller). */ -}}
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaNodePool
+metadata:
+  name: {{ .Values.nodePools.controller.name | default "controller" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    strimzi.io/cluster: {{ include "kafka-cluster.clusterName" . }}
+    {{- include "kafka-cluster.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+spec:
+  replicas: {{ int .Values.nodePools.controller.replicas }}
+  roles:
+    - controller
+  storage:
+    {{- include "kafka-cluster.tplvalues.render" (dict "value" .Values.nodePools.controller.storage "context" $) | nindent 4 }}
+  {{- with .Values.nodePools.controller.resources }}
+  resources:
+    {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 4 }}
+  {{- end }}
+  {{- with .Values.nodePools.controller.jvmOptions }}
+  jvmOptions:
+    {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 4 }}
+  {{- end }}
+  {{- with .Values.nodePools.controller.template }}
+  template:
+    {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 4 }}
+  {{- end }}

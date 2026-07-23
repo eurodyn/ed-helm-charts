@@ -1,0 +1,33 @@
+{{- /* One KafkaUser per .Values.users entry. Reconciled by the User Operator, which
+       provisions each user's credentials into a Secret of the same name:
+         - tls   -> user.crt / user.key (+ user.p12 / user.password)
+         - scram -> password (SASL/SCRAM-SHA-512) */ -}}
+{{- range $i, $u := .Values.users }}
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaUser
+metadata:
+  name: {{ $u.name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    strimzi.io/cluster: {{ include "kafka-cluster.clusterName" $ }}
+    {{- include "kafka-cluster.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: user
+spec:
+  {{- with $u.authentication }}
+  authentication:
+    {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 4 }}
+  {{- end }}
+  {{- with $u.authorization }}
+  authorization:
+    {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 4 }}
+  {{- end }}
+  {{- with $u.quotas }}
+  quotas:
+    {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 4 }}
+  {{- end }}
+  {{- with $u.template }}
+  template:
+    {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 4 }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,387 @@
+# =============================================================================
+# kafka-cluster — default values
+# =============================================================================
+# This umbrella chart:
+#   1. (optionally) installs the Strimzi Cluster Operator + CRDs (subchart), then
+#   2. creates a KRaft Kafka cluster from these values:
+#        - a dedicated CONTROLLER KafkaNodePool  (quorum, metadata plane)
+#        - a dedicated BROKER     KafkaNodePool  (data plane, JBOD storage)
+#        - a Kafka CR             (listeners, auth, authorization, broker config)
+#        - N KafkaTopics          (.Values.topics)
+#        - N KafkaUsers + ACLs    (.Values.users)
+#
+# DESIGN: most nested blocks (storage, resources, jvmOptions, template, listeners,
+# config, acls, ...) are passed through to the Strimzi CRDs VERBATIM. You can set
+# any field the Strimzi v1beta2 schema accepts without editing the chart. Values
+# may contain Helm template expressions (rendered with `tpl`).
+# =============================================================================
+
+# -- Override the chart name portion of resource names. Cosmetic. Not required.
+nameOverride: ""
+# -- Override the full resource name. Also the DEFAULT Kafka cluster name (unless
+#    cluster.name is set). Changing it after install creates a NEW, empty cluster
+#    and orphans the old one — treat as immutable once data exists. Not required.
+fullnameOverride: ""
+
+# -- Extra labels applied to every object this chart creates (merged, tpl-rendered).
+extraLabels: {}
+# -- Extra annotations applied to the Kafka CR (merged, tpl-rendered).
+extraAnnotations: {}
+
+# -- When true, the render fails hard if the Strimzi kafka.strimzi.io/v1beta2 CRDs
+#    are not present in the cluster. Leave false when operator.enabled=true (the
+#    subchart installs the CRDs in the same release). Set true for split installs.
+strictCRDCheck: false
+
+# =============================================================================
+# Strimzi Cluster Operator (subchart: strimzi-kafka-operator, aliased "operator")
+# =============================================================================
+# Everything under `operator:` is passed to the Strimzi chart. `operator.enabled`
+# additionally toggles whether the subchart is installed at all.
+#   * true  -> this release installs the operator + CRDs (single-tenant / first project)
+#   * false -> reuse an already-installed, cluster-scoped operator (multi-project)
+operator:
+  # -- Install the Strimzi Cluster Operator (and its CRDs) as part of this release.
+  enabled: true
+  # -- Watch every namespace. Set true for one shared operator serving many teams.
+  watchAnyNamespace: false
+  # -- Explicit list of namespaces to watch (leave empty to watch the release
+  #    namespace only). Ignored when watchAnyNamespace=true.
+  watchNamespaces: []
+  # -- Operator log level: DEBUG | INFO | WARN | ERROR.
+  logLevel: INFO
+  # -- Operator pod resource requests/limits (Strimzi chart schema).
+  resources:
+    requests:
+      cpu: 200m
+      memory: 384Mi
+    limits:
+      cpu: "1"
+      memory: 768Mi
+  # Any other strimzi-kafka-operator values may be added here, e.g.:
+  # featureGates: ""
+  # defaultImageRegistry: quay.io
+
+# =============================================================================
+# Kafka cluster (Kafka CR)
+# =============================================================================
+cluster:
+  # -- Kafka cluster name = Kafka CR metadata.name and the `strimzi.io/cluster`
+  #    label on every pool/topic/user. Defaults to the chart fullname. Keep it
+  #    short (<= ~40 chars) so generated pod names stay under the 63-char limit.
+  name: ""
+
+  # -- Kafka (broker) version. Must be a version the operator supports. Empty =
+  #    let the operator pick its default. Strimzi 1.1.0 default is 4.3.0.
+  version: "4.3.0"
+  # -- KRaft metadata version. Upgrade this AFTER rolling `version` (two-step
+  #    upgrade). Empty = operator default. For Kafka 4.3.0 use 4.3-IV0.
+  metadataVersion: "4.3-IV0"
+
+  # -- Add the `strimzi.io/node-pools: enabled` annotation. Harmless/ignored on
+  #    Strimzi 1.x (node pools are mandatory); keep true for older operators.
+  nodePoolsAnnotation: true
+
+  # -- Listeners (pass-through list -> Kafka.spec.kafka.listeners). A Strimzi
+  #    listener supports exactly ONE authentication type, so mTLS and SCRAM live
+  #    on separate listeners here. Ports must be unique and >= 9092.
+  listeners:
+    # Internal listener: TLS-encrypted + mutual-TLS auth (client cert = identity).
+    - name: internal
+      port: 9092
+      type: internal
+      tls: true
+      authentication:
+        type: tls
+    # External listener: cloud LoadBalancer, TLS-encrypted + SCRAM-SHA-512 auth.
+    - name: external
+      port: 9093
+      type: loadbalancer
+      tls: true
+      authentication:
+        type: scram-sha-512
+      configuration:
+        # Restrict who can reach the public LB. Set to your real client CIDRs.
+        loadBalancerSourceRanges:
+          - 10.0.0.0/8
+
+  # -- Authorization (pass-through -> Kafka.spec.kafka.authorization). `simple`
+  #    enables the built-in ACL authorizer (deny-by-default; see .Values.users).
+  #    Set to null (e.g. `authorization: null`) to disable it entirely — NOT
+  #    recommended, and note `{}` will NOT disable it (Helm merges maps, keeping
+  #    the default type: simple).
+  authorization:
+    type: simple
+    # superUsers:
+    #   - CN=break-glass-admin   # bypasses ACLs; must map to a real identity
+
+  # -- Broker configuration (pass-through map -> Kafka.spec.kafka.config).
+  #    Cluster-wide defaults; per-topic config overrides where they overlap.
+  #    DO NOT set controller.* / process.roles / node.id / metadata.log.dir here
+  #    (Strimzi-managed; the chart rejects them).
+  config:
+    # Durability / replication
+    default.replication.factor: 3
+    min.insync.replicas: 2
+    offsets.topic.replication.factor: 3
+    transaction.state.log.replication.factor: 3
+    transaction.state.log.min.isr: 2
+    # Threading (scale with CPU and JBOD volume count)
+    num.network.threads: 8
+    num.io.threads: 16
+    num.replica.fetchers: 4
+    num.recovery.threads.per.data.dir: 4
+    # Message sizing (keep >= topic max.message.bytes and consumer fetch size)
+    message.max.bytes: 10485760
+    replica.fetch.max.bytes: 10485760
+    # Retention / segments (global defaults)
+    log.retention.hours: 168
+    log.segment.bytes: 1073741824
+    log.retention.check.interval.ms: 300000
+    log.cleaner.enable: true
+    # Throughput / sockets
+    socket.request.max.bytes: 104857600
+    # Operational safety: topics are GitOps-managed via KafkaTopic CRs only
+    auto.create.topics.enable: false
+
+  # -- Entity Operator (pass-through -> Kafka.spec.entityOperator). Reconciles
+  #    KafkaTopic (topicOperator) and KafkaUser (userOperator) CRs. Set to null
+  #    (`entityOperator: null`) to disable BOTH — but then .Values.topics/.users
+  #    are never reconciled. (`{}` does NOT disable it — Helm keeps the defaults.)
+  entityOperator:
+    topicOperator:
+      resources:
+        requests:
+          memory: 256Mi
+          cpu: 100m
+        limits:
+          memory: 512Mi
+          cpu: 500m
+    userOperator:
+      resources:
+        requests:
+          memory: 256Mi
+          cpu: 100m
+        limits:
+          memory: 512Mi
+          cpu: 500m
+
+  # -- Kafka Exporter (pass-through -> Kafka.spec.kafkaExporter): consumer-group
+  #    lag & offset metrics for Prometheus. Set to null to disable (`{}` won't).
+  kafkaExporter:
+    topicRegex: ".*"
+    groupRegex: ".*"
+    resources:
+      requests:
+        memory: 128Mi
+        cpu: 100m
+      limits:
+        memory: 256Mi
+        cpu: 250m
+
+  # -- Broker/JVM Prometheus metrics via the JMX Prometheus Exporter.
+  metrics:
+    # -- Emit a metrics ConfigMap and wire Kafka.spec.kafka.metricsConfig to it.
+    enabled: true
+    # -- Override the JMX exporter rules (YAML string). Empty = built-in ruleset.
+    rules: ""
+
+  # -- Extra pass-through into Kafka.spec.kafka.template (pod labels, image pull
+  #    secrets, etc.). Not required.
+  kafkaTemplate: {}
+
+# =============================================================================
+# Node pools — Broker and Controller as SEPARATE, dedicated pools.
+# =============================================================================
+nodePools:
+  # ---- Controllers: KRaft metadata quorum. Odd replica count (3 recommended). ----
+  controller:
+    # -- KafkaNodePool name (pod prefix: <cluster>-<name>-<id>).
+    name: controller
+    # -- Number of controllers. MUST be odd (1, 3, 5). 3 tolerates 1 failure.
+    replicas: 3
+    # -- Storage (pass-through). Controllers need small, fast, durable disk.
+    storage:
+      type: persistent-claim
+      size: 50Gi
+      # `class` maps to the PVC storageClassName. Change to an SSD class.
+      class: fast-ssd
+      deleteClaim: false
+    # -- Resources (pass-through). Guaranteed QoS (memory request == limit).
+    resources:
+      requests:
+        memory: 2Gi
+        cpu: "1"
+      limits:
+        memory: 3Gi
+        cpu: "2"
+    # -- JVM options (pass-through). Fixed heap avoids resize pauses.
+    jvmOptions:
+      -Xms: 1536m
+      -Xmx: 1536m
+      -XX:
+        UseG1GC: "true"
+        MaxGCPauseMillis: "20"
+        InitiatingHeapOccupancyPercent: "35"
+    # -- Pod template (pass-through). Default: hard per-node anti-affinity so a
+    #    node loss never breaks quorum, plus soft zone spread.
+    template:
+      pod:
+        affinity:
+          podAntiAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              - topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchExpressions:
+                    - key: strimzi.io/pool-name
+                      operator: In
+                      values: [controller]
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  topologyKey: topology.kubernetes.io/zone
+                  labelSelector:
+                    matchExpressions:
+                      - key: strimzi.io/pool-name
+                        operator: In
+                        values: [controller]
+
+  # ---- Brokers: data plane. JBOD (multiple volumes) for parallel disk I/O. ----
+  broker:
+    # -- KafkaNodePool name (pod prefix: <cluster>-<name>-<id>).
+    name: broker
+    # -- Number of brokers. Must be >= the highest topic replication factor.
+    replicas: 3
+    # -- Storage (pass-through). JBOD with >= 2 volumes here (each gets its own
+    #    PVC). Kafka spreads partition log dirs across the volumes.
+    storage:
+      type: jbod
+      volumes:
+        - id: 0
+          type: persistent-claim
+          size: 500Gi
+          class: fast-nvme
+          deleteClaim: false
+        - id: 1
+          type: persistent-claim
+          size: 500Gi
+          class: standard-ssd
+          deleteClaim: false
+    # -- Resources (pass-through). Keep heap ~half of memory; the rest is OS page
+    #    cache that serves reads.
+    resources:
+      requests:
+        memory: 16Gi
+        cpu: "4"
+      limits:
+        memory: 16Gi
+        cpu: "8"
+    # -- JVM options (pass-through) with G1GC tuning for a low-pause broker.
+    jvmOptions:
+      -Xms: 8192m
+      -Xmx: 8192m
+      -XX:
+        UseG1GC: "true"
+        MaxGCPauseMillis: "20"
+        InitiatingHeapOccupancyPercent: "35"
+        G1HeapRegionSize: "16m"
+        ExplicitGCInvokesConcurrent: "true"
+    # -- Pod template (pass-through). Hard per-node anti-affinity + soft zone spread.
+    #    Add nodeAffinity/tolerations here to pin brokers to dedicated hardware.
+    template:
+      pod:
+        affinity:
+          podAntiAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              - topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchExpressions:
+                    - key: strimzi.io/pool-name
+                      operator: In
+                      values: [broker]
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  topologyKey: topology.kubernetes.io/zone
+                  labelSelector:
+                    matchExpressions:
+                      - key: strimzi.io/pool-name
+                        operator: In
+                        values: [broker]
+
+# =============================================================================
+# Topics -> one KafkaTopic per entry. partitions/replicas + free-form config.
+# =============================================================================
+topics:
+  # High-throughput event stream (delete retention).
+  - name: high-throughput-events
+    partitions: 12
+    replicas: 3
+    config:
+      min.insync.replicas: 2
+      cleanup.policy: delete
+      retention.ms: 604800000        # 7 days
+      retention.bytes: 214748364800  # 200 GiB / partition cap
+      segment.bytes: 536870912       # 512 MiB
+      segment.ms: 3600000
+      compression.type: producer
+      max.message.bytes: 10485760
+  # Compacted "latest value per key" topic.
+  - name: compacted-state
+    partitions: 6
+    replicas: 3
+    config:
+      min.insync.replicas: 2
+      cleanup.policy: compact
+      min.compaction.lag.ms: 3600000     # 1 hour
+      max.compaction.lag.ms: 86400000    # 24 hours
+      delete.retention.ms: 86400000      # 24 hours
+      min.cleanable.dirty.ratio: "0.3"
+      segment.bytes: 268435456           # 256 MiB
+      segment.ms: 3600000
+
+# =============================================================================
+# Users -> one KafkaUser per entry. authentication + authorization.acls + quotas
+# are passed through verbatim. `authorization.type` should match cluster auth
+# (`simple`). Consumers need `Read` on their consumer `group` to commit offsets.
+# =============================================================================
+users:
+  # Producer / admin — mutual TLS (identity = certificate CN=producer-admin).
+  - name: producer-admin
+    authentication:
+      type: tls
+    authorization:
+      type: simple
+      acls:
+        - resource: { type: topic, name: high-throughput-events, patternType: literal }
+          operations: [Write, Describe]
+          host: "*"
+        - resource: { type: topic, name: compacted-state, patternType: literal }
+          operations: [Write, Describe]
+          host: "*"
+        - resource: { type: cluster }
+          operations: [Describe]
+          host: "*"
+    quotas:
+      producerByteRate: 4194304   # 4 MiB/s
+      requestPercentage: 55
+  # Consumer — SCRAM-SHA-512 (identity = username analytics-consumer).
+  - name: analytics-consumer
+    authentication:
+      type: scram-sha-512
+    authorization:
+      type: simple
+      acls:
+        - resource: { type: topic, name: high-throughput-events, patternType: literal }
+          operations: [Read, Describe]
+          host: "*"
+        - resource: { type: topic, name: compacted-state, patternType: literal }
+          operations: [Read, Describe]
+          host: "*"
+        # CRUCIAL: Read on the consumer group so offset commits are allowed.
+        - resource: { type: group, name: analytics-group, patternType: literal }
+          operations: [Read]
+          host: "*"
+    quotas:
+      consumerByteRate: 8388608   # 8 MiB/s
+      requestPercentage: 55

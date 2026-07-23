@@ -1,0 +1,56 @@
+kafka-cluster has been rendered for release "{{ .Release.Name }}".
+
+Cluster    : {{ include "kafka-cluster.clusterName" . }}
+Namespace  : {{ .Release.Namespace }}
+Operator   : {{ if .Values.operator.enabled }}installed by this release (Strimzi {{ .Chart.AppVersion }}){{ else }}expected to already exist (operator.enabled=false){{ end }}
+Kafka      : version {{ .Values.cluster.version | default "operator-default" }} (metadataVersion {{ .Values.cluster.metadataVersion | default "operator-default" }})
+
+Node pools :
+  controller : {{ .Values.nodePools.controller.replicas }} x (role: controller)
+  broker     : {{ .Values.nodePools.broker.replicas }} x (role: broker, JBOD {{ len .Values.nodePools.broker.storage.volumes }} volumes)
+
+Topics ({{ len .Values.topics }}):
+{{- range .Values.topics }}
+  - {{ .name }} (partitions: {{ .partitions }}, replicas: {{ .replicas }})
+{{- end }}
+
+Users ({{ len .Values.users }}):
+{{- range .Values.users }}
+  - {{ .name }} (auth: {{ .authentication.type }})
+{{- end }}
+
+{{ if and (not .Values.operator.enabled) (not (.Capabilities.APIVersions.Has "kafka.strimzi.io/v1beta2")) -}}
+!! WARNING: operator.enabled=false but the kafka.strimzi.io/v1beta2 CRDs were not
+!! detected. No Strimzi operator appears to be installed, so these custom resources
+!! will not be reconciled. Install the Strimzi operator first (or set
+!! operator.enabled=true / strictCRDCheck=true to fail early).
+{{ end -}}
+
+Inspect the deployment:
+
+  kubectl get kafka,kafkanodepool -n {{ .Release.Namespace }} -l strimzi.io/cluster={{ include "kafka-cluster.clusterName" . }}
+  kubectl get kafkatopic,kafkauser -n {{ .Release.Namespace }} -l strimzi.io/cluster={{ include "kafka-cluster.clusterName" . }}
+  kubectl wait kafka/{{ include "kafka-cluster.clusterName" . }} -n {{ .Release.Namespace }} --for=condition=Ready --timeout=600s
+
+Bootstrap services (once Ready):
+
+  kubectl get svc -n {{ .Release.Namespace }} -l strimzi.io/cluster={{ include "kafka-cluster.clusterName" . }},strimzi.io/kind=Kafka
+
+Retrieve user credentials (Secrets are named after each KafkaUser):
+{{- range .Values.users }}
+{{- if eq .authentication.type "scram-sha-512" }}
+  # {{ .name }} (SCRAM password)
+  kubectl get secret {{ .name }} -n {{ $.Release.Namespace }} -o jsonpath='{.data.password}' | base64 -d
+{{- else if eq .authentication.type "tls" }}
+  # {{ .name }} (mTLS cert/key)
+  kubectl get secret {{ .name }} -n {{ $.Release.Namespace }} -o jsonpath='{.data.user\.crt}' | base64 -d
+  kubectl get secret {{ .name }} -n {{ $.Release.Namespace }} -o jsonpath='{.data.user\.key}' | base64 -d
+{{- end }}
+{{- end }}
+
+Reminders:
+  * A Strimzi listener supports ONE auth type — mTLS and SCRAM are on separate
+    listeners (see cluster.listeners).
+  * authorization: simple is DENY-by-default; every allowed action needs an ACL.
+  * Upgrading Strimzi CRDs on a later `helm upgrade` is a MANUAL step (Helm never
+    upgrades subchart crds/). See the chart README.

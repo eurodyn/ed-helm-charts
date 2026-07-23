@@ -1,2 +1,6 @@
 .cr-release-packages/
 .cr-index/
+
+# Vendored Helm subchart archives — rebuilt from Chart.lock via
+# `helm dependency build` (CI's chart-testing does this). Chart.lock IS tracked.
+charts/*/charts/
