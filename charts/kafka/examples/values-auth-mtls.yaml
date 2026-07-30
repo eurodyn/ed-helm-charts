@@ -26,7 +26,7 @@
 # in-cluster workloads better than third-party consumers.
 # =============================================================================
 operator:
-  enabled: true
+  enabled: false
 
 cluster:
   name: mtls-kafka
@@ -69,7 +69,7 @@ nodePools:
     jvmOptions:
       -Xms: 512m
       -Xmx: 512m
-    template: {}
+    template: null        # must be `null`, not `{}` — Helm's value merge won't clear a nested default with an empty map
   broker:
     replicas: 1
     storage:
@@ -85,7 +85,7 @@ nodePools:
     jvmOptions:
       -Xms: 1024m
       -Xmx: 1024m
-    template: {}
+    template: null
 
 topics:
   - name: demo
