@@ -46,7 +46,90 @@ entries:
     urls:
     - https://github.com/eurodyn/ed-helm-charts/releases/download/etcd-0.1.0/etcd-0.1.0.tgz
     version: 0.1.0
+  kafka-cluster:
+  - annotations:
+      category: Streaming
+      licenses: Apache-2.0
+    apiVersion: v2
+    appVersion: 1.1.0
+    created: "2026-07-30T09:46:48.400292498Z"
+    dependencies:
+    - alias: operator
+      condition: operator.enabled
+      name: strimzi-kafka-operator
+      repository: https://strimzi.io/charts/
+      version: 1.1.0
+    description: Umbrella Helm chart that stands up a complete, production-oriented
+      Apache Kafka platform on Strimzi. It (optionally) installs the Strimzi Cluster
+      Operator and its CRDs as a subchart, then creates a KRaft (ZooKeeper-less) Kafka
+      cluster with SEPARATE Broker and Controller KafkaNodePools, plus KafkaTopics,
+      KafkaUsers and per-user ACLs - all driven from values so the same chart can
+      be reused verbatim across multiple projects.
+    digest: dc090034316a95a766acfb038153e841cab9fc5bb47adb9ae6e78e8ae711bffb
+    home: https://strimzi.io
+    icon: https://raw.githubusercontent.com/eurodyn/ed-helm-charts/main/logo_ed.png
+    keywords:
+    - kafka
+    - strimzi
+    - strimzi-operator
+    - kraft
+    - kafka-nodepools
+    - streaming
+    - event-streaming
+    - messaging
+    kubeVersion: '>=1.25.0-0'
+    maintainers:
+    - email: info@eurodyn.com
+      name: European Dynamics SA
+      url: https://www.eurodyn.com
+    name: kafka-cluster
+    sources:
+    - https://github.com/strimzi/strimzi-kafka-operator
+    - https://strimzi.io/docs/operators/latest/overview
+    type: application
+    urls:
+    - https://github.com/eurodyn/ed-helm-charts/releases/download/kafka-cluster-0.1.0/kafka-cluster-0.1.0.tgz
+    version: 0.1.0
   milvus-cluster:
+  - annotations:
+      category: Database
+      licenses: Apache-2.0
+      milvus.io/operator-min-version: 1.3.7
+      milvus.io/requires-operator: "true"
+    apiVersion: v2
+    appVersion: v2.6.20
+    created: "2026-07-30T09:46:48.552095653Z"
+    description: Production-grade Helm chart that deploys a Milvus 2.6 cluster through
+      the Milvus Operator by creating a milvus.io/v1beta1 Milvus custom resource.
+      This chart connects Milvus exclusively to pre-existing EXTERNAL Kafka, etcd
+      and Apache Ozone (S3 Gateway) dependencies. It never installs, manages or deletes
+      those external systems.
+    digest: 3928c7cc216e92843ea770f1a4c396010e663b371e7bcaaa10259c154fd8bcdc
+    home: https://milvus.io
+    icon: https://raw.githubusercontent.com/eurodyn/ed-helm-charts/main/logo_ed.png
+    keywords:
+    - milvus
+    - milvus-operator
+    - vector-database
+    - milvus-cluster
+    - kafka
+    - etcd
+    - s3
+    - apache-ozone
+    - streaming
+    kubeVersion: '>=1.24.0-0'
+    maintainers:
+    - email: info@eurodyn.com
+      name: European Dynamics SA
+      url: https://www.eurodyn.com
+    name: milvus-cluster
+    sources:
+    - https://github.com/milvus-io/milvus
+    - https://github.com/zilliztech/milvus-operator
+    type: application
+    urls:
+    - https://github.com/eurodyn/ed-helm-charts/releases/download/milvus-cluster-0.1.3/milvus-cluster-0.1.3.tgz
+    version: 0.1.3
   - annotations:
       category: Database
       licenses: Apache-2.0
@@ -164,4 +247,4 @@ entries:
     urls:
     - https://github.com/eurodyn/ed-helm-charts/releases/download/milvus-cluster-0.1.0/milvus-cluster-0.1.0.tgz
     version: 0.1.0
-generated: "2026-07-22T07:08:27.969401103Z"
+generated: "2026-07-30T09:46:48.552124667Z"
