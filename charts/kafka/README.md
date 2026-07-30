@@ -42,8 +42,9 @@ custom resources, so a **single `helm install` works end-to-end**.
 ## Quick start
 
 ```sh
-helm dependency build charts/kafka          # vendor the Strimzi subchart
-helm install kafka charts/kafka -n kafka --create-namespace
+helm repo add ed-helm-charts https://eurodyn.github.io/ed-helm-charts
+helm repo update
+helm install kafka ed-helm-charts/kafka-cluster -n kafka --create-namespace
 kubectl wait kafka/kafka -n kafka --for=condition=Ready --timeout=600s
 ```
 
@@ -51,6 +52,15 @@ That gives you the open, no-auth dev cluster described above. For anything else,
 start from one of the example values files:
 
 ```sh
+helm install kafka ed-helm-charts/kafka-cluster -n kafka --create-namespace \
+  -f values-auth-scram.yaml
+```
+
+Installing from a local checkout instead (e.g. to test unreleased changes)
+works the same way, but the Strimzi subchart must be vendored first:
+
+```sh
+helm dependency build charts/kafka          # vendor the Strimzi subchart
 helm install kafka charts/kafka -n kafka --create-namespace \
   -f charts/kafka/examples/values-auth-scram.yaml
 ```
