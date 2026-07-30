@@ -1,5 +1,5 @@
 {{- /* Dedicated CONTROLLER KafkaNodePool — KRaft metadata quorum (role: controller). */ -}}
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/{{ .Values.crdApiVersion }}
 kind: KafkaNodePool
 metadata:
   name: {{ .Values.nodePools.controller.name | default "controller" }}

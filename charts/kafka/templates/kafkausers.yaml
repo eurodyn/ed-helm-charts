@@ -4,7 +4,7 @@
          - scram -> password (SASL/SCRAM-SHA-512) */ -}}
 {{- range $i, $u := .Values.users }}
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/{{ $.Values.crdApiVersion }}
 kind: KafkaUser
 metadata:
   name: {{ $u.name }}

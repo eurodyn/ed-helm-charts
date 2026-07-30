@@ -135,8 +135,8 @@ message when the values would produce an invalid or unsafe deployment.
 
 {{/* ---------------- Operator / CRD presence ---------------- */}}
 {{- if .Values.strictCRDCheck -}}
-{{- if not (.Capabilities.APIVersions.Has "kafka.strimzi.io/v1beta2") -}}
-{{- fail "strictCRDCheck is enabled but the kafka.strimzi.io/v1beta2 CRDs are not installed. Install the Strimzi operator (operator.enabled=true) or set strictCRDCheck=false." -}}
+{{- if not (.Capabilities.APIVersions.Has (printf "kafka.strimzi.io/%s" .Values.crdApiVersion)) -}}
+{{- fail (printf "strictCRDCheck is enabled but the kafka.strimzi.io/%s CRDs are not installed. Install the Strimzi operator (operator.enabled=true), fix crdApiVersion to match the installed operator, or set strictCRDCheck=false." .Values.crdApiVersion) -}}
 {{- end -}}
 {{- end -}}
 

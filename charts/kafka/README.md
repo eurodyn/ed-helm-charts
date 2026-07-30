@@ -6,7 +6,7 @@ Umbrella Helm chart that stands up a complete **Apache Kafka** platform on
 Kafka cluster with **separate Broker and Controller `KafkaNodePool`s**, plus
 `KafkaTopic`s, `KafkaUser`s and per-user **ACLs** — all from `values.yaml`.
 
-- API group: `kafka.strimzi.io/v1beta2`
+- API group: `kafka.strimzi.io/v1` (default; override via `crdApiVersion` for older operators still serving `v1beta2`)
 - Strimzi operator: **1.1.0** (appVersion), default Kafka **4.3.0** / metadata `4.3-IV0`
 - Architecture: KRaft only (Strimzi 1.x removed ZooKeeper); roles split into
   dedicated node pools; JBOD brokers.
@@ -118,6 +118,7 @@ refuses to render:
 
 | Path | Default | Purpose |
 |------|---------|---------|
+| `crdApiVersion` | `v1` | Strimzi CRD API version to render resources as. Must match a version served by the target cluster's operator (`kubectl get crd kafkas.kafka.strimzi.io -o jsonpath='{.spec.versions[*].name}'`). |
 | `operator.enabled` | `true` | Install the Strimzi operator + CRDs as a subchart. |
 | `operator.watchAnyNamespace` | `false` | Operator watches all namespaces (shared model). |
 | `cluster.name` | `""` (→ fullname) | Kafka CR name + `strimzi.io/cluster` label. Keep short. |
@@ -138,7 +139,7 @@ refuses to render:
 Nested Strimzi blocks (`storage`, `resources`, `jvmOptions`, `template`,
 `listeners`, `config`, `acls`, `authentication`, `quotas`, `entityOperator`,
 `kafkaExporter`) are **passed through to the CRDs verbatim** — set any field the
-`v1beta2` schema accepts without editing templates. Values may contain Helm
+`crdApiVersion` schema accepts without editing templates. Values may contain Helm
 template expressions (rendered with `tpl`).
 
 ## Topics, Users & ACLs
@@ -234,7 +235,7 @@ cluster:
 - **Reserved config** — `cluster.config` sets a Strimzi-managed key
   (`controller.*`, `process.roles`, `node.id`, `metadata.log.dir`,
   `zookeeper.*`, `broker.id`, `listeners`, `advertised.*`).
-- **CRDs** — `strictCRDCheck=true` and `kafka.strimzi.io/v1beta2` is absent.
+- **CRDs** — `strictCRDCheck=true` and `kafka.strimzi.io/<crdApiVersion>` is absent.
 
 ## Verify locally
 

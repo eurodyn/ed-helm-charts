@@ -878,7 +878,7 @@ spec:
 
 ---
 # Source: kafka-cluster/templates/kafka.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: release-name-kafka-cluster
@@ -969,7 +969,7 @@ spec:
 
 ---
 # Source: kafka-cluster/templates/nodepool-broker.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
   name: broker
@@ -1041,7 +1041,7 @@ spec:
 
 ---
 # Source: kafka-cluster/templates/nodepool-controller.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
   name: controller
@@ -1103,7 +1103,7 @@ spec:
 
 ---
 # Source: kafka-cluster/templates/kafkatopics.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: high-throughput-events
@@ -1131,7 +1131,7 @@ spec:
     segment.ms: 3600000
 ---
 # Source: kafka-cluster/templates/kafkatopics.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: compacted-state
@@ -1160,7 +1160,7 @@ spec:
 
 ---
 # Source: kafka-cluster/templates/kafkausers.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaUser
 metadata:
   name: producer-admin
@@ -1206,7 +1206,7 @@ spec:
     requestPercentage: 55
 ---
 # Source: kafka-cluster/templates/kafkausers.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaUser
 metadata:
   name: analytics-consumer

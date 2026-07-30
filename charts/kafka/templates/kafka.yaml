@@ -4,7 +4,7 @@
        Kafka cluster (KRaft). replicas + storage are delegated to the
        KafkaNodePool resources (nodepool-controller.yaml / nodepool-broker.yaml).
        ===================================================================== */ -}}
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/{{ .Values.crdApiVersion }}
 kind: Kafka
 metadata:
   name: {{ include "kafka-cluster.clusterName" . }}

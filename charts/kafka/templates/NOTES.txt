@@ -19,11 +19,12 @@ Users ({{ len .Values.users }}):
   - {{ .name }} (auth: {{ .authentication.type }})
 {{- end }}
 
-{{ if and (not .Values.operator.enabled) (not (.Capabilities.APIVersions.Has "kafka.strimzi.io/v1beta2")) -}}
-!! WARNING: operator.enabled=false but the kafka.strimzi.io/v1beta2 CRDs were not
-!! detected. No Strimzi operator appears to be installed, so these custom resources
-!! will not be reconciled. Install the Strimzi operator first (or set
-!! operator.enabled=true / strictCRDCheck=true to fail early).
+{{ if and (not .Values.operator.enabled) (not (.Capabilities.APIVersions.Has (printf "kafka.strimzi.io/%s" .Values.crdApiVersion))) -}}
+!! WARNING: operator.enabled=false but the kafka.strimzi.io/{{ .Values.crdApiVersion }} CRDs were not
+!! detected. No Strimzi operator appears to be installed (or it serves a different
+!! CRD version than crdApiVersion={{ .Values.crdApiVersion }}), so these custom resources
+!! will not be reconciled. Install the Strimzi operator first, adjust crdApiVersion
+!! to match it, or set operator.enabled=true / strictCRDCheck=true to fail early.
 {{ end -}}
 
 Inspect the deployment:

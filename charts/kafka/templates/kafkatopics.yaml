@@ -1,7 +1,7 @@
 {{- /* One KafkaTopic per .Values.topics entry. Reconciled by the Topic Operator. */ -}}
 {{- range $i, $t := .Values.topics }}
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/{{ $.Values.crdApiVersion }}
 kind: KafkaTopic
 metadata:
   name: {{ $t.name }}

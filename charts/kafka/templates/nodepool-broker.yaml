@@ -1,5 +1,5 @@
 {{- /* Dedicated BROKER KafkaNodePool — data plane, JBOD storage (role: broker). */ -}}
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/{{ .Values.crdApiVersion }}
 kind: KafkaNodePool
 metadata:
   name: {{ .Values.nodePools.broker.name | default "broker" }}

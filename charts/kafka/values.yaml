@@ -12,7 +12,7 @@
 #
 # DESIGN: most nested blocks (storage, resources, jvmOptions, template, listeners,
 # config, acls, ...) are passed through to the Strimzi CRDs VERBATIM. You can set
-# any field the Strimzi v1beta2 schema accepts without editing the chart. Values
+# any field the Strimzi v1 schema accepts without editing the chart. Values
 # may contain Helm template expressions (rendered with `tpl`).
 # =============================================================================
 
@@ -28,7 +28,15 @@ extraLabels: {}
 # -- Extra annotations applied to the Kafka CR (merged, tpl-rendered).
 extraAnnotations: {}
 
-# -- When true, the render fails hard if the Strimzi kafka.strimzi.io/v1beta2 CRDs
+# -- The Strimzi CRD API version this chart's Kafka/KafkaNodePool/KafkaTopic/
+#    KafkaUser resources are rendered as. Must match a version actually served
+#    by the Strimzi operator installed in the target cluster:
+#      - Strimzi >= ~0.45 (KRaft-only, this chart's default): "v1"
+#      - older Strimzi releases: "v1beta2"
+#    Check with: kubectl get crd kafkas.kafka.strimzi.io -o jsonpath='{.spec.versions[*].name}'
+crdApiVersion: v1
+
+# -- When true, the render fails hard if the kafka.strimzi.io/<crdApiVersion> CRDs
 #    are not present in the cluster. Leave false when operator.enabled=true (the
 #    subchart installs the CRDs in the same release). Set true for split installs.
 strictCRDCheck: false
