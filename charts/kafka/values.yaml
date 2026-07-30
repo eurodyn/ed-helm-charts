@@ -300,12 +300,14 @@ nodePools:
         affinity:
           podAntiAffinity:
             preferredDuringSchedulingIgnoredDuringExecution:
-              - topologyKey: kubernetes.io/hostname
-                labelSelector:
-                  matchExpressions:
-                    - key: strimzi.io/pool-name
-                      operator: In
-                      values: [controller]
+              - weight: 100
+                podAffinityTerm:
+                  topologyKey: kubernetes.io/hostname
+                  labelSelector:
+                    matchExpressions:
+                      - key: strimzi.io/pool-name
+                        operator: In
+                        values: [controller]
 
   # ---- Brokers: data plane. JBOD (multiple volumes) for parallel disk I/O. ----
   broker:
@@ -362,12 +364,14 @@ nodePools:
         affinity:
           podAntiAffinity:
             preferredDuringSchedulingIgnoredDuringExecution:
-              - topologyKey: kubernetes.io/hostname
-                labelSelector:
-                  matchExpressions:
-                    - key: strimzi.io/pool-name
-                      operator: In
-                      values: [broker]
+              - weight: 100
+                podAffinityTerm:
+                  topologyKey: kubernetes.io/hostname
+                  labelSelector:
+                    matchExpressions:
+                      - key: strimzi.io/pool-name
+                        operator: In
+                        values: [broker]
 
 # =============================================================================
 # Topics -> one KafkaTopic per entry. partitions/replicas + free-form config.
