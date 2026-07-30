@@ -3,3 +3,8 @@ target-branch: main
 chart-dirs:
   - charts
 validate-maintainers: false
+
+# Repositories needed to resolve subchart dependencies declared in Chart.yaml.
+# ct runs `helm dependency build` per chart
+chart-repos:
+  - strimzi=https://strimzi.io/charts/
