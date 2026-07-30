@@ -1,6 +1,6 @@
 {{/*
 ======================================================================
-kafka-cluster — input validation
+kafka-cluster - input validation
 Included once from templates/kafka.yaml. Fails the render with a clear
 message when the values would produce an invalid or unsafe deployment.
 ======================================================================
@@ -32,6 +32,37 @@ message when the values would produce an invalid or unsafe deployment.
 {{- fail "nodePools.broker.storage.type must be \"jbod\" for the broker pool (this chart demonstrates multi-volume brokers)." -}}
 {{- end -}}
 
+{{/* ---------------- Cluster Configs ---------------- */}}
+{{- $hasRf := hasKey .Values.cluster.config "default.replication.factor" -}}
+{{- $rf := index .Values.cluster.config "default.replication.factor" -}}
+{{- if and $hasRf (gt (int $rf) (int $br)) -}}
+{{- fail (printf "cluster.config.\"default.replication.factor\" (%d) must not exceed nodePools.broker.replicas (%d)." (int $rf) (int $br)) -}}
+{{- end -}}
+
+{{- $hasOffsetsRf := hasKey .Values.cluster.config "offsets.topic.replication.factor" -}}
+{{- $offsetsRf := index .Values.cluster.config "offsets.topic.replication.factor" -}}
+{{- if and $hasOffsetsRf (gt (int $offsetsRf) (int $br)) -}}
+{{- fail (printf "cluster.config.\"offsets.topic.replication.factor\" (%d) must not exceed nodePools.broker.replicas (%d)." (int $offsetsRf) (int $br)) -}}
+{{- end -}}
+
+{{- $hasTxnRf := hasKey .Values.cluster.config "transaction.state.log.replication.factor" -}}
+{{- $txnRf := index .Values.cluster.config "transaction.state.log.replication.factor" -}}
+{{- if and $hasTxnRf (gt (int $txnRf) (int $br)) -}}
+{{- fail (printf "cluster.config.\"transaction.state.log.replication.factor\" (%d) must not exceed nodePools.broker.replicas (%d)." (int $txnRf) (int $br)) -}}
+{{- end -}}
+
+{{- $hasMinIsr := hasKey .Values.cluster.config "min.insync.replicas" -}}
+{{- $minIsr := index .Values.cluster.config "min.insync.replicas" -}}
+{{- if and $hasMinIsr $hasRf (gt (int $minIsr) (int $rf)) -}}
+{{- fail (printf "cluster.config.\"min.insync.replicas\" (%d) must not exceed cluster.config.\"default.replication.factor\" (%d)." (int $minIsr) (int $rf)) -}}
+{{- end -}}
+
+{{- $hasTxnMinIsr := hasKey .Values.cluster.config "transaction.state.log.min.isr" -}}
+{{- $txnMinIsr := index .Values.cluster.config "transaction.state.log.min.isr" -}}
+{{- if and $hasTxnMinIsr $hasTxnRf (gt (int $txnMinIsr) (int $txnRf)) -}}
+{{- fail (printf "cluster.config.\"transaction.state.log.min.isr\" (%d) must not exceed cluster.config.\"transaction.state.log.replication.factor\" (%d)." (int $txnMinIsr) (int $txnRf)) -}}
+{{- end -}}
+
 {{/* ---------------- Forbidden broker config keys ---------------- */}}
 {{- $forbidden := list "controller." "process.roles" "node.id" "metadata.log.dir" "zookeeper." "broker.id" "listeners" "advertised." -}}
 {{- range $k, $v := .Values.cluster.config -}}
@@ -44,7 +75,19 @@ message when the values would produce an invalid or unsafe deployment.
 
 {{/* ---------------- Listeners ---------------- */}}
 {{- if or (not .Values.cluster.listeners) (eq (len .Values.cluster.listeners) 0) -}}
-{{- fail "cluster.listeners must contain at least one listener." -}}
+{{- fail "cluster.listeners must contain at least one listener. Uncomment and adjust one of the examples in values.yaml (mTLS, SCRAM, or anonymous)." -}}
+{{- end -}}
+
+{{/* ---------------- Anonymous listeners vs authorization ---------------- */}}
+{{- $listenerAuthzType := "" -}}
+{{- if .Values.cluster.authorization -}}{{- $listenerAuthzType = (.Values.cluster.authorization.type | default "") -}}{{- end -}}
+{{- if eq $listenerAuthzType "simple" -}}
+{{- $superUsers := default (list) .Values.cluster.authorization.superUsers -}}
+{{- range $i, $l := .Values.cluster.listeners -}}
+{{- if and (not $l.authentication) (not (has "User:ANONYMOUS" $superUsers)) -}}
+{{- fail (printf "cluster.listeners[%d] (%s) has no authentication (anonymous access), but cluster.authorization.type is \"simple\" and \"User:ANONYMOUS\" is not in cluster.authorization.superUsers - anonymous clients will be denied by the ACL authorizer. Add \"User:ANONYMOUS\" to cluster.authorization.superUsers, or remove cluster.authorization to leave this listener unrestricted." $i $l.name) -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 
 {{/* ---------------- Topics ---------------- */}}

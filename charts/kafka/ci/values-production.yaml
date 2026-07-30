@@ -1,5 +1,5 @@
-# CI: full render including the Strimzi operator subchart, using chart defaults
-# (3 controllers + 3 JBOD brokers, 2 topics, 2 users) plus a couple of overrides.
+# CI: full render including the Strimzi operator subchart. 3 controllers +
+# 3 JBOD brokers, mTLS + SCRAM listeners, simple authorizer, topics and users.
 operator:
   enabled: true
   watchAnyNamespace: false
@@ -8,3 +8,65 @@ cluster:
   name: kafka-prod
   version: "4.3.0"
   metadataVersion: "4.3-IV0"
+  metrics:
+    enabled: true
+  # Two listeners: one auth type each (a Strimzi listener supports only one).
+  listeners:
+    - name: internal
+      port: 9092
+      type: internal
+      tls: true
+      authentication:
+        type: tls
+    - name: external
+      port: 9093
+      type: internal
+      tls: true
+      authentication:
+        type: scram-sha-512
+  authorization:
+    type: simple
+    superUsers:
+      - CN=ci-admin
+topics:
+  - name: events
+    partitions: 6
+    replicas: 3
+    config:
+      min.insync.replicas: 2
+      cleanup.policy: delete
+      retention.ms: 604800000
+  - name: state
+    partitions: 3
+    replicas: 3
+    config:
+      min.insync.replicas: 2
+      cleanup.policy: compact
+users:
+  # mTLS identity (cert CN = user name).
+  - name: events-producer
+    authentication:
+      type: tls
+    authorization:
+      type: simple
+      acls:
+        - resource: { type: topic, name: events, patternType: literal }
+          operations: [Write, Describe]
+          host: "*"
+    quotas:
+      producerByteRate: 4194304
+  # SCRAM identity (password in a generated Secret).
+  - name: events-consumer
+    authentication:
+      type: scram-sha-512
+    authorization:
+      type: simple
+      acls:
+        - resource: { type: topic, name: events, patternType: literal }
+          operations: [Read, Describe]
+          host: "*"
+        - resource: { type: group, name: ci-group, patternType: literal }
+          operations: [Read]
+          host: "*"
+    quotas:
+      consumerByteRate: 8388608

@@ -17,6 +17,9 @@ cluster:
       tls: true
       authentication:
         type: scram-sha-512
+  # Required by the per-user ACLs below (the chart default is {} = no authorizer).
+  authorization:
+    type: simple
   # Relax durability for a single broker.
   config:
     default.replication.factor: 1

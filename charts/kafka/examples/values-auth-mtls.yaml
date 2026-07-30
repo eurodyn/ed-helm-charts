@@ -1,0 +1,110 @@
+# =============================================================================
+# Example: MUTUAL TLS (mTLS) authentication — the client certificate IS the
+# identity.
+#   helm install kafka charts/kafka -n kafka --create-namespace \
+#     -f charts/kafka/examples/values-auth-mtls.yaml
+#
+# Strimzi's User Operator issues a client cert per KafkaUser and stores the
+# keypair in a Secret named after the user, in the release namespace:
+#
+#   kubectl -n kafka get secret app-client -o jsonpath='{.data.user\.p12}' \
+#     | base64 -d > user.p12
+#   kubectl -n kafka get secret app-client -o jsonpath='{.data.user\.password}' \
+#     | base64 -d      # keystore password
+#
+# Client config:
+#   bootstrap.servers=mtls-kafka-kafka-bootstrap:9092
+#   security.protocol=SSL
+#   ssl.keystore.location=/path/to/user.p12        # client identity
+#   ssl.keystore.type=PKCS12
+#   ssl.truststore.location=/path/to/truststore.jks  # from the cluster CA secret
+#
+# The Kafka principal is derived from the cert subject: "CN=<kafkaUserName>".
+# That is the form to use in cluster.authorization.superUsers — see below.
+#
+# Strongest option, but every client needs a provisioned cert, so it fits
+# in-cluster workloads better than third-party consumers.
+# =============================================================================
+operator:
+  enabled: true
+
+cluster:
+  name: mtls-kafka
+
+  listeners:
+    - name: internal
+      port: 9092
+      type: internal
+      tls: true
+      authentication:
+        type: tls
+
+  # Required for the per-user ACLs below.
+  authorization:
+    type: simple
+    # mTLS principals are matched by certificate subject, hence the CN= form
+    # (unlike SCRAM, which uses a bare username). Must map to a real KafkaUser.
+    # superUsers:
+    #   - CN=break-glass-admin
+
+  # Single broker -> replication factors must be 1.
+  config:
+    default.replication.factor: 1
+    min.insync.replicas: 1
+    offsets.topic.replication.factor: 1
+    transaction.state.log.replication.factor: 1
+    transaction.state.log.min.isr: 1
+    auto.create.topics.enable: false
+
+nodePools:
+  controller:
+    replicas: 1
+    storage:
+      type: persistent-claim
+      size: 10Gi
+      deleteClaim: true
+    resources:
+      requests: { memory: 1Gi, cpu: 250m }
+      limits: { memory: 1Gi, cpu: "1" }
+    jvmOptions:
+      -Xms: 512m
+      -Xmx: 512m
+    template: {}
+  broker:
+    replicas: 1
+    storage:
+      type: jbod
+      volumes:
+        - id: 0
+          type: persistent-claim
+          size: 20Gi
+          deleteClaim: true
+    resources:
+      requests: { memory: 2Gi, cpu: 500m }
+      limits: { memory: 2Gi, cpu: "2" }
+    jvmOptions:
+      -Xms: 1024m
+      -Xmx: 1024m
+    template: {}
+
+topics:
+  - name: demo
+    partitions: 3
+    replicas: 1
+
+users:
+  # `authentication.type` MUST match the listener's type (tls), or the user has
+  # no way to authenticate on that listener.
+  - name: app-client
+    authentication:
+      type: tls
+    authorization:
+      type: simple
+      acls:
+        - resource: { type: topic, name: demo, patternType: literal }
+          operations: [Read, Write, Describe]
+          host: "*"
+        # Consumers MUST have Read on their consumer group to commit offsets.
+        - resource: { type: group, name: demo-group, patternType: literal }
+          operations: [Read]
+          host: "*"

@@ -9,7 +9,14 @@ Kafka cluster with **separate Broker and Controller `KafkaNodePool`s**, plus
 - API group: `kafka.strimzi.io/v1beta2`
 - Strimzi operator: **1.1.0** (appVersion), default Kafka **4.3.0** / metadata `4.3-IV0`
 - Architecture: KRaft only (Strimzi 1.x removed ZooKeeper); roles split into
-  dedicated node pools; JBOD brokers; deny-by-default `simple` authorization.
+  dedicated node pools; JBOD brokers.
+
+> **Defaults are a blank slate, not a production posture.** Out of the box this
+> chart creates a cluster with **one PLAINTEXT listener on `:9092`, no
+> authentication and no authorization** — i.e. fully open — and **no topics or
+> users**. That is deliberate: the chart is meant to be driven from your own
+> values file. Pick an authentication model from the table below before using it
+> anywhere shared.
 
 ## How the umbrella works
 
@@ -40,12 +47,55 @@ helm install kafka charts/kafka -n kafka --create-namespace
 kubectl wait kafka/kafka -n kafka --for=condition=Ready --timeout=600s
 ```
 
-Override for your project with a values file:
+That gives you the open, no-auth dev cluster described above. For anything else,
+start from one of the example values files:
 
 ```sh
 helm install kafka charts/kafka -n kafka --create-namespace \
-  -f charts/kafka/examples/values-production.yaml
+  -f charts/kafka/examples/values-auth-scram.yaml
 ```
+
+## Choose an authentication model
+
+Each example is a complete, working values file — including the client-side
+config and the `kubectl` commands to read the generated credentials.
+
+| Use case | Example values file | Listener `authentication` | Identity is… | `KafkaUser` needed? |
+|---|---|---|---|---|
+| **No auth** — local/dev, fully open | [examples/values-auth-none.yaml](examples/values-auth-none.yaml) | *(omitted)* | `User:ANONYMOUS` (everyone) | No — `users: []` |
+| **SCRAM-SHA-512** — username + password | [examples/values-auth-scram.yaml](examples/values-auth-scram.yaml) | `{type: scram-sha-512}` | the KafkaUser **name** | Yes |
+| **mTLS** — client certificate | [examples/values-auth-mtls.yaml](examples/values-auth-mtls.yaml) | `{type: tls}` | the cert subject `CN=<user>` | Yes |
+
+A Strimzi listener supports exactly **one** authentication type, so to offer both
+mTLS and SCRAM you declare **two listeners** (see
+[examples/values-production.yaml](examples/values-production.yaml)).
+
+### Mapping users → the right example
+
+`users[]` entries must line up with your listeners and authorizer, or the chart
+refuses to render:
+
+| If your `users[].authentication.type` is… | your listener must be… | and `cluster.authorization` must be… |
+|---|---|---|
+| `scram-sha-512` | a listener with `authentication.type: scram-sha-512` | `{type: simple}` — required for `acls` |
+| `tls` | a listener with `authentication.type: tls` | `{type: simple}` — required for `acls` |
+| *(no KafkaUser at all)* | a listener with **no** `authentication` | `{}` (default), **or** `{type: simple}` + `superUsers: [User:ANONYMOUS]` |
+
+`superUsers` principal format differs by auth type — this trips people up:
+
+| Auth type | `superUsers` entry |
+|---|---|
+| mTLS | `CN=break-glass-admin` (matches the certificate subject) |
+| SCRAM | `my-username` (bare, no prefix) |
+| anonymous | `User:ANONYMOUS` (literal) |
+
+### Other example files
+
+| File | Purpose |
+|---|---|
+| [examples/values-minimal.yaml](examples/values-minimal.yaml) | Single controller + single broker dev cluster, SCRAM. Not fault-tolerant. |
+| [examples/values-production.yaml](examples/values-production.yaml) | 3+3 HA, two listeners (mTLS internal + SCRAM LoadBalancer), real StorageClasses, quotas. |
+| [examples/values-shared-operator.yaml](examples/values-shared-operator.yaml) | Many projects, **one** cluster-scoped operator (`operator.enabled=false` + `strictCRDCheck=true`). |
 
 ## Deployment models
 
@@ -62,17 +112,18 @@ helm install kafka charts/kafka -n kafka --create-namespace \
 | `operator.watchAnyNamespace` | `false` | Operator watches all namespaces (shared model). |
 | `cluster.name` | `""` (→ fullname) | Kafka CR name + `strimzi.io/cluster` label. Keep short. |
 | `cluster.version` / `cluster.metadataVersion` | `4.3.0` / `4.3-IV0` | Kafka + KRaft metadata level. |
-| `cluster.listeners` | internal mTLS `:9092`, external SCRAM LB `:9093` | Pass-through listener list (one auth type per listener). |
-| `cluster.authorization` | `{type: simple}` | Deny-by-default ACL authorizer. |
-| `cluster.config` | tuned map | Broker config (`default.replication.factor`, `min.insync.replicas`, threads, retention, …). |
+| `cluster.listeners` | one `plain` PLAINTEXT `:9092`, **no auth** | Pass-through listener list (one auth type per listener). |
+| `cluster.authorization` | `{}` — **no ACL authorizer** | Set `{type: simple}` for deny-by-default ACLs. `null` to remove after enabling. |
+| `cluster.config` | tuned map (RF 3 / ISR 2) | Broker config. Cross-checked against broker count — see Guardrails. |
+| `cluster.livenessProbe` / `cluster.readinessProbe` | `{}` (Strimzi defaults) | **Cluster-wide** probes for all Kafka pods. `KafkaNodePool` has no probe field, so these cannot be set per-pool. |
 | `cluster.entityOperator` | topic+user operators w/ resources | Reconciles Topic/User CRs. Set `null` to disable (not `{}`). |
 | `cluster.kafkaExporter` | enabled | Consumer-lag metrics. Set `null` to disable (not `{}`). |
-| `cluster.metrics.enabled` | `true` | JMX→Prometheus ConfigMap + `metricsConfig`. |
+| `cluster.metrics.enabled` | `false` | JMX→Prometheus ConfigMap + `metricsConfig`. |
 | `nodePools.controller.replicas` | `3` | KRaft controllers — **must be odd**. |
-| `nodePools.broker.replicas` | `3` | Brokers. Must be ≥ max topic replication factor. |
-| `nodePools.broker.storage` | JBOD 2×500Gi | Multi-volume broker storage. |
-| `topics[]` | 2 examples | `{name, partitions, replicas, config}` → one `KafkaTopic` each. |
-| `users[]` | 2 examples | `{name, authentication, authorization.acls, quotas}` → one `KafkaUser` each. |
+| `nodePools.broker.replicas` | `3` | Brokers. Must be ≥ every replication factor. |
+| `nodePools.broker.storage` | JBOD, 1 × 50Gi | Multi-volume broker storage (add volumes for parallel I/O). |
+| `topics[]` | `[]` | `{name, partitions, replicas, config}` → one `KafkaTopic` each. |
+| `users[]` | `[]` | `{name, authentication, authorization.acls, quotas}` → one `KafkaUser` each. |
 
 Nested Strimzi blocks (`storage`, `resources`, `jvmOptions`, `template`,
 `listeners`, `config`, `acls`, `authentication`, `quotas`, `entityOperator`,
@@ -102,26 +153,93 @@ users:
           operations: [Read]
 ```
 
+ACLs require `cluster.authorization.type: simple` — the chart fails the render
+otherwise, since ACLs are silently ignored without the authorizer.
+
 The User Operator provisions credentials into a Secret named after each user:
 `tls` → `user.crt`/`user.key` (+ `user.p12`); `scram-sha-512` → `password`.
 
+## Storage & KRaft metadata
+
+Every node — broker or controller — keeps a copy of the KRaft metadata log. By
+default Strimzi puts it on the volume with the **lowest `id`**; pin it with
+`kraftMetadata: shared` (at most one volume may have it):
+
+```yaml
+nodePools:
+  broker:
+    storage:
+      type: jbod
+      volumes:
+        - { id: 0, type: persistent-claim, size: 500Gi, class: fast-nvme, kraftMetadata: shared }
+        - { id: 1, type: persistent-claim, size: 500Gi, class: standard-ssd }
+```
+
+- **Brokers**: the metadata volume is shared with partition data; extra volumes
+  hold partition data only. Pin explicitly if you plan to add volumes later —
+  adding a lower-`id` volume otherwise **relocates the log** and forces a rolling
+  update that deletes and recreates it.
+- **Controllers**: storage holds *only* the metadata log, which always lives on a
+  single volume — so extra/JBOD volumes buy nothing and `kraftMetadata` is
+  redundant there.
+
+## Operational notes
+
+**`helm uninstall` can hang on KafkaTopic finalizers.** The Topic Operator adds a
+`strimzi.io/topic` finalizer to every `KafkaTopic`, so deleting the CR blocks
+until the topic is really gone from Kafka — but the same release also deletes the
+Topic Operator that would clear it. To trade that risk for possibly-orphaned
+topics:
+
+```yaml
+cluster:
+  entityOperator:
+    template:
+      topicOperatorContainer:
+        env:
+          - name: STRIMZI_USE_FINALIZERS
+            value: "false"
+```
+
 ## Validation & guardrails
 
-`templates/_validate.tpl` fails the render with a clear message when:
-controllers aren't odd; broker storage isn't JBOD; a topic's replicas exceed the
-broker count; duplicate topic/user names; a user defines ACLs while
-`cluster.authorization.type` isn't `simple`; or `cluster.config` sets a
-Strimzi-managed key (`controller.*`, `process.roles`, `node.id`,
-`metadata.log.dir`, `zookeeper.*`, …). `strictCRDCheck=true` additionally fails
-if the `kafka.strimzi.io/v1beta2` CRDs are absent.
+`templates/_validate.tpl` fails the render with an actionable message when:
+
+- **Node pools** — controllers aren't odd or < 1; brokers < 1; broker storage
+  isn't `jbod`.
+- **Replication vs. broker count** — `default.replication.factor`,
+  `offsets.topic.replication.factor` or
+  `transaction.state.log.replication.factor` exceeds `nodePools.broker.replicas`;
+  or a topic's `replicas` exceeds it.
+- **ISR vs. replication factor** — `min.insync.replicas` >
+  `default.replication.factor`, or `transaction.state.log.min.isr` >
+  `transaction.state.log.replication.factor`.
+  *(Keys explicitly set to `null` are skipped, so you can defer to Kafka's own
+  defaults.)*
+- **Listeners** — the list is empty; or an **anonymous** listener is combined
+  with `authorization.type: simple` without `User:ANONYMOUS` in `superUsers`
+  (which would let clients connect but deny every request).
+- **Topics / users** — missing or duplicate names; a user without
+  `authentication`; a user with `acls` while `authorization.type` isn't `simple`.
+- **Reserved config** — `cluster.config` sets a Strimzi-managed key
+  (`controller.*`, `process.roles`, `node.id`, `metadata.log.dir`,
+  `zookeeper.*`, `broker.id`, `listeners`, `advertised.*`).
+- **CRDs** — `strictCRDCheck=true` and `kafka.strimzi.io/v1beta2` is absent.
 
 ## Verify locally
 
 ```sh
 helm dependency build charts/kafka
 helm lint charts/kafka
+helm template t charts/kafka -f charts/kafka/examples/values-auth-scram.yaml
 helm template t charts/kafka | kubectl apply --dry-run=server -f -   # needs a cluster + CRDs
 ```
+
+CI (`ct lint`, see [.github/workflows/lint.yml](../../.github/workflows/lint.yml))
+additionally renders every file in [ci/](ci/) — one variant per file, covering the
+minimal, production, mTLS, no-auth and anonymous-superuser paths. Add a `ci/`
+file when you add a code path worth regression-testing; chart defaults alone
+render very little.
 
 ## Notes
 

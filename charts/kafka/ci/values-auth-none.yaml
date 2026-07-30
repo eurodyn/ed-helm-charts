@@ -1,0 +1,42 @@
+# CI: anonymous (no-auth) listener with the ACL authorizer left OFF.
+# Covers the "no authentication, no authorization" render path.
+operator:
+  enabled: false
+strictCRDCheck: false
+cluster:
+  name: kafka-anon
+  listeners:
+    - name: plain
+      port: 9092
+      type: internal
+      tls: false
+  authorization: {}
+  config:
+    default.replication.factor: 1
+    min.insync.replicas: 1
+    offsets.topic.replication.factor: 1
+    transaction.state.log.replication.factor: 1
+    transaction.state.log.min.isr: 1
+nodePools:
+  controller:
+    replicas: 1
+    storage:
+      type: persistent-claim
+      size: 10Gi
+      deleteClaim: true
+    template: {}
+  broker:
+    replicas: 1
+    storage:
+      type: jbod
+      volumes:
+        - id: 0
+          type: persistent-claim
+          size: 20Gi
+          deleteClaim: true
+    template: {}
+topics:
+  - name: demo
+    partitions: 1
+    replicas: 1
+users: []

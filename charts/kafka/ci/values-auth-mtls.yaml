@@ -1,22 +1,20 @@
-# CI: minimal single-node render (operator not installed here to keep it light).
+# CI: mTLS listener + mTLS KafkaUser (cert CN = identity) + CN= superuser form.
 operator:
   enabled: false
 strictCRDCheck: false
 cluster:
-  name: kafka-min
-  metrics:
-    enabled: true
+  name: kafka-mtls
   listeners:
     - name: internal
       port: 9092
       type: internal
       tls: true
       authentication:
-        type: scram-sha-512
-  # Required by the user ACLs below.
+        type: tls
   authorization:
     type: simple
-  # Single broker -> all replication factors must be 1.
+    superUsers:
+      - CN=ci-admin
   config:
     default.replication.factor: 1
     min.insync.replicas: 1
@@ -30,12 +28,6 @@ nodePools:
       type: persistent-claim
       size: 10Gi
       deleteClaim: true
-    resources:
-      requests: { memory: 1Gi, cpu: 250m }
-      limits: { memory: 1Gi, cpu: "1" }
-    jvmOptions:
-      -Xms: 512m
-      -Xmx: 512m
     template: {}
   broker:
     replicas: 1
@@ -46,24 +38,21 @@ nodePools:
           type: persistent-claim
           size: 20Gi
           deleteClaim: true
-    resources:
-      requests: { memory: 2Gi, cpu: 500m }
-      limits: { memory: 2Gi, cpu: "2" }
-    jvmOptions:
-      -Xms: 1024m
-      -Xmx: 1024m
     template: {}
 topics:
   - name: demo
     partitions: 1
     replicas: 1
 users:
-  - name: demo-user
+  - name: mtls-client
     authentication:
-      type: scram-sha-512
+      type: tls
     authorization:
       type: simple
       acls:
         - resource: { type: topic, name: demo, patternType: literal }
           operations: [Read, Write, Describe]
+          host: "*"
+        - resource: { type: group, name: demo-group, patternType: literal }
+          operations: [Read]
           host: "*"

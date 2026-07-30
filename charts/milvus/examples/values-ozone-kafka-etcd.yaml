@@ -2,7 +2,7 @@
 # Focused example: Apache Ozone (S3G) + Kafka (SASL_SSL) + etcd (TLS + auth),
 # all external, all backed by EXISTING Kubernetes Secrets.
 #
-# Expected Secrets (create them out-of-band, e.g. via ESO — see external-secrets.yaml):
+# Expected Secrets (create them out-of-band, e.g. via ESO - see external-secrets.yaml):
 #
 #   milvus-ozone-credentials   keys: accesskey, secretkey
 #   milvus-ozone-ca            keys: ca.crt
@@ -33,7 +33,7 @@ externalStorage:
   region: us-east-1
   useSSL: true
   cloudProvider: aws
-  useVirtualHost: false            # Ozone requires path-style
+  useVirtualHost: false # Ozone requires path-style
   existingSecret: milvus-ozone-credentials
   tls:
     enabled: true

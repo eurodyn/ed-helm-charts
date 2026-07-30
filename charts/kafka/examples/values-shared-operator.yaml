@@ -23,6 +23,16 @@ strictCRDCheck: true      # fail fast if the shared operator's CRDs are absent
 cluster:
   name: project-a-kafka
   # Project-specific overrides go here (listeners, config, resources, ...).
+  listeners:
+    - name: internal
+      port: 9092
+      type: internal
+      tls: true
+      authentication:
+        type: scram-sha-512
+  # Required by the per-user ACLs below (the chart default is {} = no authorizer).
+  authorization:
+    type: simple
 
 topics:
   - name: project-a-events

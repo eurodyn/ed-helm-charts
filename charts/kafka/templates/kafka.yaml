@@ -39,6 +39,14 @@ spec:
     config:
       {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 6 }}
     {{- end }}
+    {{- with .Values.cluster.livenessProbe }}
+    livenessProbe:
+      {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 6 }}
+    {{- end }}
+    {{- with .Values.cluster.readinessProbe }}
+    readinessProbe:
+      {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 6 }}
+    {{- end }}
     {{- if .Values.cluster.metrics.enabled }}
     metricsConfig:
       type: jmxPrometheusExporter

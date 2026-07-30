@@ -5,7 +5,7 @@ description: >-
   platform on Strimzi. It (optionally) installs the Strimzi Cluster Operator and
   its CRDs as a subchart, then creates a KRaft (ZooKeeper-less) Kafka cluster with
   SEPARATE Broker and Controller KafkaNodePools, plus KafkaTopics, KafkaUsers and
-  per-user ACLs — all driven from values so the same chart can be reused verbatim
+  per-user ACLs - all driven from values so the same chart can be reused verbatim
   across multiple projects.
 type: application
 
