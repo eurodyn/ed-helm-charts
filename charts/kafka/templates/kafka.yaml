@@ -63,7 +63,7 @@ spec:
   entityOperator:
     {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 4 }}
   {{- end }}
-  {{- with .Values.cluster.kafkaExporter }}
+  {{- if and .Values.cluster.kafkaExporter (ne .Values.cluster.kafkaExporter.enabled false) }}
   kafkaExporter:
-    {{- include "kafka-cluster.tplvalues.render" (dict "value" . "context" $) | nindent 4 }}
+    {{- include "kafka-cluster.tplvalues.render" (dict "value" (omit .Values.cluster.kafkaExporter "enabled") "context" $) | nindent 4 }}
   {{- end }}

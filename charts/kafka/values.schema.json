@@ -45,7 +45,12 @@
         "authorization": { "type": "object" },
         "config": { "type": "object" },
         "entityOperator": { "type": "object" },
-        "kafkaExporter": { "type": "object" },
+        "kafkaExporter": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" }
+          }
+        },
         "kafkaTemplate": { "type": "object" },
         "metrics": {
           "type": "object",

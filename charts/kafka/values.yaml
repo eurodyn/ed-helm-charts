@@ -233,8 +233,9 @@ cluster:
     #         value: "false"
 
   # -- Kafka Exporter (pass-through -> Kafka.spec.kafkaExporter): consumer-group
-  #    lag & offset metrics for Prometheus. Set to null to disable (`{}` won't).
+  #    lag & offset metrics for Prometheus. Set `enabled: false` to disable it
   kafkaExporter:
+    enabled: true
     topicRegex: ".*"
     groupRegex: ".*"
     resources:

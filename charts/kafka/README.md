@@ -128,7 +128,7 @@ refuses to render:
 | `cluster.config` | tuned map (RF 3 / ISR 2) | Broker config. Cross-checked against broker count — see Guardrails. |
 | `cluster.livenessProbe` / `cluster.readinessProbe` | `{}` (Strimzi defaults) | **Cluster-wide** probes for all Kafka pods. `KafkaNodePool` has no probe field, so these cannot be set per-pool. |
 | `cluster.entityOperator` | topic+user operators w/ resources | Reconciles Topic/User CRs. Set `null` to disable (not `{}`). |
-| `cluster.kafkaExporter` | enabled | Consumer-lag metrics. Set `null` to disable (not `{}`). |
+| `cluster.kafkaExporter` | enabled | Consumer-lag metrics. Set `cluster.kafkaExporter.enabled: false` to disable it — this is the only override guaranteed to work when this chart is used as a subchart (overriding the whole block with `null`/`{}` from a downstream chart's values doesn't survive Helm's cross-chart value coalescing). |
 | `cluster.metrics.enabled` | `false` | JMX→Prometheus ConfigMap + `metricsConfig`. |
 | `nodePools.controller.replicas` | `3` | KRaft controllers — **must be odd**. |
 | `nodePools.broker.replicas` | `3` | Brokers. Must be ≥ every replication factor. |
